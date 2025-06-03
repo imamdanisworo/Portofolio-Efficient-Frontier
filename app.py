@@ -2,15 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
+import os
 from datetime import datetime
 import matplotlib.pyplot as plt
 from dbfread import DBF
-
-# Helper class to simulate a file-like object with a name attribute
-class NamedBytesIO(io.BytesIO):
-    def __init__(self, content, name):
-        super().__init__(content)
-        self.name = name
 
 st.set_page_config(page_title="Stock Analyzer (DBF)", layout="wide")
 st.title("📈 DBF Stock Price Analyzer")
@@ -34,9 +29,12 @@ if uploaded_files:
             continue
 
         try:
-            # Wrap uploaded file content as named BytesIO for DBF
-            buffered_file = NamedBytesIO(file.read(), file.name)
-            table = DBF(buffered_file, load=True)
+            # Save uploaded file to a temporary path and read with DBF
+            temp_path = f"/tmp/{file.name}"
+            with open(temp_path, "wb") as f:
+                f.write(file.read())
+
+            table = DBF(temp_path, load=True)
             df = pd.DataFrame(iter(table))
             df.columns = df.columns.str.upper().str.strip()
         except Exception as e:
