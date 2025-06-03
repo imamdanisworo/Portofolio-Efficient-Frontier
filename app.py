@@ -4,12 +4,12 @@ import numpy as np
 import io
 from datetime import datetime
 import matplotlib.pyplot as plt
+from dbfread import DBF
 
-st.set_page_config(page_title="Stock Risk & Return Analyzer", layout="wide")
+st.set_page_config(page_title="Stock Analyzer (DBF)", layout="wide")
+st.title("📈 DBF Stock Price Analyzer")
 
-st.title("?? Stock Price Risk & Return Analyzer")
-
-uploaded_files = st.file_uploader("Upload daily stock price files", type=["csv", "txt", "xlsx"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload daily stock price files (.dbf)", type="dbf", accept_multiple_files=True)
 
 if uploaded_files:
     all_data = pd.DataFrame()
@@ -22,45 +22,50 @@ if uploaded_files:
             st.error(f"Invalid filename format: {filename}")
             continue
 
-        df = pd.read_csv(file) if file.name.endswith(".csv") else pd.read_excel(file)
+        # Read DBF into DataFrame
+        try:
+            table = DBF(file, load=True)
+            df = pd.DataFrame(iter(table))
+        except Exception as e:
+            st.error(f"Error reading DBF file {file.name}: {e}")
+            continue
+
         df.columns = df.columns.str.lower()
+
         if 'code' not in df.columns or 'closing price' not in df.columns:
-            st.error(f"Missing required columns in {file.name}")
+            st.error(f"Missing required columns ('code', 'closing price') in {file.name}")
             continue
 
         df['date'] = file_date
         all_data = pd.concat([all_data, df[['code', 'closing price', 'date']]], ignore_index=True)
 
-    # Pivot to get time series format
+    # Pivot data
     prices = all_data.pivot_table(index='date', columns='code', values='closing price').sort_index()
-    st.subheader("?? Combined Price Table")
+    st.subheader("📊 Combined Price Table")
     st.dataframe(prices)
 
-    if st.button("?? Analyze Data"):
-        # Calculate daily returns
+    if st.button("🔍 Analyze Data"):
+        # Calculate returns
         returns = prices.pct_change().dropna()
 
-        st.subheader("?? Daily Returns")
+        st.subheader("📉 Daily Returns")
         st.dataframe(returns)
 
-        # Expected return and risk
-        mean_returns = returns.mean() * 252  # Annualized
-        risk = returns.std() * np.sqrt(252)  # Annualized
+        mean_returns = returns.mean() * 252
+        risk = returns.std() * np.sqrt(252)
 
         result_df = pd.DataFrame({
             "Expected Return": mean_returns,
             "Risk (Volatility)": risk
         })
 
-        st.subheader("?? Risk vs Return")
+        st.subheader("📈 Risk vs Return")
         st.dataframe(result_df)
 
-        # Correlation Matrix
-        st.subheader("?? Correlation Matrix")
+        st.subheader("📌 Correlation Matrix")
         corr = returns.corr()
         st.dataframe(corr)
 
-        # Plot Risk-Return Scatter
         fig, ax = plt.subplots()
         ax.scatter(result_df["Risk (Volatility)"], result_df["Expected Return"])
 
@@ -72,8 +77,7 @@ if uploaded_files:
         ax.set_title("Risk vs Return Scatter Plot")
         st.pyplot(fig)
 
-        # Simple Equal-Weighted Portfolio Suggestion
-        st.subheader("?? Suggested Allocation (Equal Weight)")
+        st.subheader("💡 Suggested Allocation (Equal Weight)")
         equal_weights = np.repeat(1 / len(mean_returns), len(mean_returns))
         suggestion_df = pd.DataFrame({
             "Stock": mean_returns.index,
@@ -82,5 +86,5 @@ if uploaded_files:
         st.dataframe(suggestion_df)
 
 else:
-    st.info("Please upload at least one stock price file.")
+    st.info("Please upload .dbf stock price files.")
 
