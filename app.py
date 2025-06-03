@@ -26,7 +26,8 @@ if 'clear_data_trigger' in st.session_state:
 def clean_closing_price(value):
     try:
         if isinstance(value, bytes):
-            return float(value.decode('utf-8').strip().replace('\x00', ''))
+            decoded = value.decode('utf-8', errors='ignore').replace('\x00', '').strip()
+            return float(decoded)
         elif isinstance(value, str):
             return float(value.strip())
         return float(value)
@@ -118,15 +119,19 @@ with tabs[0]:
                 df = pd.DataFrame(iter(table))
                 df.columns = df.columns.str.upper().str.strip()
 
+                base_name = os.path.splitext(file.name)[0]
+                if base_name.startswith("CP") and len(base_name) >= 8:
+                    raw_date = base_name[2:]
+                    file_date = datetime.strptime(raw_date, "%d%m%y").date()
+                else:
+                    raise ValueError("Filename format invalid for date extraction")
+
                 if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
-                    date_part = file.name.replace("CP", "").split('.')[0]
-                    file_date = datetime.strptime(date_part, "%d%m%y").date()
                     df['DATE'] = file_date
                     df['STK_CLOS'] = df['STK_CLOS'].apply(clean_closing_price)
-
                     _ = save_combined_prices(df[['STK_CODE', 'STK_CLOS', 'DATE']], file_hash)
                     st.session_state.stored_hashes[file.name] = file_hash
-                    st.success(f"Uploaded: {file.name}")
+                    st.success(f"Uploaded: {file.name} → {file_date}")
                 else:
                     st.error(f"Missing STK_CODE or STK_CLOS in {file.name}")
             except Exception as e:
