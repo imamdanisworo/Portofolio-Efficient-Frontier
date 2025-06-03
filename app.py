@@ -157,12 +157,13 @@ with tabs[2]:
     prices = load_all_pivoted()
 
     if not prices.empty:
-        st.subheader("Select Stocks and Dates")
+        st.subheader("Select Stocks and Period")
         selected_stocks = st.multiselect("Select stock codes", list(prices.columns))
-        selected_dates = st.multiselect("Select dates", list(prices.index))
+        period = st.selectbox("Select analysis period (days)", [10, 50, 100, 200, 1000])
 
-        if selected_stocks and selected_dates:
-            filtered = prices.loc[selected_dates, selected_stocks]
+        if selected_stocks:
+            latest_dates = prices.index.sort_values()[-period:]
+            filtered = prices.loc[latest_dates, selected_stocks]
             st.subheader("Filtered Prices")
             st.dataframe(filtered)
 
@@ -191,6 +192,6 @@ with tabs[2]:
                 weights = np.repeat(1 / len(mean_returns), len(mean_returns))
                 st.dataframe(pd.DataFrame({"Stock": mean_returns.index, "Weight %": weights * 100}))
         else:
-            st.info("Select both stock codes and dates to proceed.")
+            st.info("Select stock codes to proceed.")
     else:
         st.warning("Upload data in Tab 1 first.")
