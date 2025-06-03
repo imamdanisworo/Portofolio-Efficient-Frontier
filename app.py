@@ -1,3 +1,4 @@
+# Streamlit multi-tab DBF analyzer with persistent session file store
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,7 +8,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from dbfread import DBF
 
-# Add this helper function to clean the STK_CLOS values
+# Helper: clean padded byte strings from DBF closing price fields
 def clean_closing_price(value):
     try:
         if isinstance(value, bytes):
@@ -18,74 +19,81 @@ def clean_closing_price(value):
     except:
         return np.nan
 
-st.set_page_config(page_title="Stock Analyzer (DBF)", layout="wide")
-st.title("📈 DBF Stock Price Analyzer")
+# Initialize session state to store uploaded files
+def init_session():
+    if 'stored_data' not in st.session_state:
+        st.session_state.stored_data = {}
 
-uploaded_files = st.file_uploader(
-    "Upload daily stock price files (.dbf)", 
-    type="dbf", 
-    accept_multiple_files=True
-)
+init_session()
 
-if uploaded_files:
-    all_data = pd.DataFrame()
+st.set_page_config(page_title="Stock DBF Analyzer", layout="wide")
+st.title("📈 Multi-tab Stock DBF Analyzer")
 
-    for file in uploaded_files:
-        filename = file.name.split('.')[0]
-        try:
-            date_part = filename.replace("CP", "")  # Remove 'CP' prefix
-            file_date = datetime.strptime(date_part, "%d%m%y").date()
-        except:
-            st.error(f"❌ Invalid filename format: {filename}. Expected format: CPddmmyy.dbf")
-            continue
+tabs = st.tabs(["📁 Upload Data", "📦 Stored Files", "📊 Analyze Data"])
 
-        try:
-            # Save uploaded file to a temporary path and read with DBF
-            temp_path = f"/tmp/{file.name}"
-            with open(temp_path, "wb") as f:
-                f.write(file.read())
+# Tab 1: Upload DBF Files
+with tabs[0]:
+    st.header("Upload DBF Stock Files")
+    uploaded_files = st.file_uploader("Upload DBF files", type="dbf", accept_multiple_files=True)
+    if uploaded_files:
+        for file in uploaded_files:
+            filename = file.name
+            if filename not in st.session_state.stored_data:
+                try:
+                    temp_path = f"/tmp/{filename}"
+                    with open(temp_path, "wb") as f:
+                        f.write(file.read())
 
-            table = DBF(temp_path, load=True)
-            df = pd.DataFrame(iter(table))
-            df.columns = df.columns.str.upper().str.strip()
-        except Exception as e:
-            st.error(f"❌ Error reading {file.name}: {e}")
-            continue
+                    table = DBF(temp_path, load=True)
+                    df = pd.DataFrame(iter(table))
+                    df.columns = df.columns.str.upper().str.strip()
 
-        required_cols = ['STK_CODE', 'STK_CLOS']
-        if not all(col in df.columns for col in required_cols):
-            st.error(f"❌ {file.name} must include columns: {required_cols}")
-            continue
+                    if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
+                        date_part = filename.replace("CP", "").split('.')[0]
+                        file_date = datetime.strptime(date_part, "%d%m%y").date()
+                        df['DATE'] = file_date
+                        df['STK_CLOS'] = df['STK_CLOS'].apply(clean_closing_price)
+                        st.session_state.stored_data[filename] = df[['STK_CODE', 'STK_CLOS', 'DATE']]
+                        st.success(f"Uploaded and stored: {filename}")
+                    else:
+                        st.error(f"Missing STK_CODE or STK_CLOS in {filename}")
+                except Exception as e:
+                    st.error(f"Error processing {filename}: {e}")
 
-        df['STK_CLOS'] = df['STK_CLOS'].apply(clean_closing_price)
-        df['DATE'] = file_date
-        all_data = pd.concat([all_data, df[['STK_CODE', 'STK_CLOS', 'DATE']]], ignore_index=True)
-
-    if all_data.empty:
-        st.warning("⚠️ No valid data collected from uploaded files.")
+# Tab 2: Stored Files & Delete Option
+with tabs[1]:
+    st.header("Stored Data Files")
+    if st.session_state.stored_data:
+        for name in list(st.session_state.stored_data.keys()):
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.write(f"📄 {name}")
+            with col2:
+                if st.button(f"❌ Delete", key=f"del_{name}"):
+                    del st.session_state.stored_data[name]
+                    st.success(f"Deleted: {name}")
     else:
-        # Pivot with STK_CODE as index and DATE as columns
-        prices = all_data.pivot(index='STK_CODE', columns='DATE', values='STK_CLOS').sort_index()
-        st.subheader("📊 Combined Price Table")
-        st.dataframe(prices)
+        st.info("No data files stored.")
 
-        available_stocks = list(prices.index)
-        available_dates = list(prices.columns)
+# Tab 3: Analysis
+with tabs[2]:
+    st.header("Analyze Stored Data")
 
-        selected_stocks = st.multiselect("Select stock codes to analyze", available_stocks)
-        selected_dates = st.multiselect("Select dates to include", available_dates)
+    if st.session_state.stored_data:
+        all_df = pd.concat(st.session_state.stored_data.values(), ignore_index=True)
+        prices = all_df.pivot(index='DATE', columns='STK_CODE', values='STK_CLOS').sort_index()
+
+        st.subheader("Select Filters")
+        selected_stocks = st.multiselect("Choose stock codes", list(prices.columns))
+        selected_dates = st.multiselect("Choose dates", list(prices.index))
 
         if selected_stocks and selected_dates:
-            filtered_prices = prices.loc[selected_stocks, selected_dates].T.sort_index()
-
-            st.subheader("📈 Filtered Prices")
+            filtered_prices = prices.loc[selected_dates, selected_stocks]
+            st.subheader("Filtered Price Data")
             st.dataframe(filtered_prices)
 
-            if st.button("🔍 Analyze Data"):
+            if st.button("🔍 Analyze"):
                 returns = filtered_prices.pct_change().dropna()
-                st.subheader("📉 Daily Returns")
-                st.dataframe(returns)
-
                 mean_returns = returns.mean() * 252
                 risk = returns.std() * np.sqrt(252)
 
@@ -117,6 +125,6 @@ if uploaded_files:
                 })
                 st.dataframe(suggestion_df)
         else:
-            st.info("Select stock codes and dates to proceed with analysis.")
-else:
-    st.info("📅 Please upload .dbf stock price files named like CP250515.dbf")
+            st.info("Please select stock codes and dates to run analysis.")
+    else:
+        st.warning("Upload data in Tab 1 first.")
