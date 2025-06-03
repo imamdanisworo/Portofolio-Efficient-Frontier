@@ -52,44 +52,59 @@ if uploaded_files:
     if all_data.empty:
         st.warning("⚠️ No valid data collected from uploaded files.")
     else:
-        prices = all_data.pivot(index='DATE', columns='STK_CODE', values='STK_CLOS').sort_index()
+        # Pivot with STK_CODE as index and DATE as columns
+        prices = all_data.pivot(index='STK_CODE', columns='DATE', values='STK_CLOS').sort_index()
         st.subheader("📊 Combined Price Table")
         st.dataframe(prices)
 
-        if st.button("🔍 Analyze Data"):
-            returns = prices.pct_change().dropna()
-            st.subheader("📉 Daily Returns")
-            st.dataframe(returns)
+        available_stocks = list(prices.index)
+        available_dates = list(prices.columns)
 
-            mean_returns = returns.mean() * 252
-            risk = returns.std() * np.sqrt(252)
+        selected_stocks = st.multiselect("Select stock codes to analyze", available_stocks)
+        selected_dates = st.multiselect("Select dates to include", available_dates)
 
-            result_df = pd.DataFrame({
-                "Expected Return": mean_returns,
-                "Risk (Volatility)": risk
-            })
+        if selected_stocks and selected_dates:
+            filtered_prices = prices.loc[selected_stocks, selected_dates].T.sort_index()
 
-            st.subheader("📈 Risk vs Return")
-            st.dataframe(result_df)
+            st.subheader("📈 Filtered Prices")
+            st.dataframe(filtered_prices)
 
-            st.subheader("📌 Correlation Matrix")
-            st.dataframe(returns.corr())
+            if st.button("🔍 Analyze Data"):
+                returns = filtered_prices.pct_change().dropna()
+                st.subheader("📉 Daily Returns")
+                st.dataframe(returns)
 
-            fig, ax = plt.subplots()
-            ax.scatter(result_df["Risk (Volatility)"], result_df["Expected Return"])
-            for i, txt in enumerate(result_df.index):
-                ax.annotate(txt, (result_df["Risk (Volatility)"][i], result_df["Expected Return"][i]))
-            ax.set_xlabel("Risk (Volatility)")
-            ax.set_ylabel("Expected Return")
-            ax.set_title("Risk vs Return Scatter Plot")
-            st.pyplot(fig)
+                mean_returns = returns.mean() * 252
+                risk = returns.std() * np.sqrt(252)
 
-            st.subheader("💡 Suggested Allocation (Equal Weight)")
-            equal_weights = np.repeat(1 / len(mean_returns), len(mean_returns))
-            suggestion_df = pd.DataFrame({
-                "Stock": mean_returns.index,
-                "Weight %": equal_weights * 100
-            })
-            st.dataframe(suggestion_df)
+                result_df = pd.DataFrame({
+                    "Expected Return": mean_returns,
+                    "Risk (Volatility)": risk
+                })
+
+                st.subheader("📈 Risk vs Return")
+                st.dataframe(result_df)
+
+                st.subheader("📌 Correlation Matrix")
+                st.dataframe(returns.corr())
+
+                fig, ax = plt.subplots()
+                ax.scatter(result_df["Risk (Volatility)"], result_df["Expected Return"])
+                for i, txt in enumerate(result_df.index):
+                    ax.annotate(txt, (result_df["Risk (Volatility)"][i], result_df["Expected Return"][i]))
+                ax.set_xlabel("Risk (Volatility)")
+                ax.set_ylabel("Expected Return")
+                ax.set_title("Risk vs Return Scatter Plot")
+                st.pyplot(fig)
+
+                st.subheader("💡 Suggested Allocation (Equal Weight)")
+                equal_weights = np.repeat(1 / len(mean_returns), len(mean_returns))
+                suggestion_df = pd.DataFrame({
+                    "Stock": mean_returns.index,
+                    "Weight %": equal_weights * 100
+                })
+                st.dataframe(suggestion_df)
+        else:
+            st.info("Select stock codes and dates to proceed with analysis.")
 else:
     st.info("📅 Please upload .dbf stock price files named like CP250515.dbf")
