@@ -124,8 +124,8 @@ with tabs[0]:
 
                 base_name = os.path.splitext(file.name)[0]
                 if base_name.startswith("CP") and len(base_name) >= 8:
-                    raw_date = base_name[2:]
-                    file_date = datetime.strptime(raw_date, "%d%m%y").date()
+                    raw_date = base_name[2:]  # yymmdd
+                    file_date = datetime.strptime(raw_date, "%y%m%d").date()
                 else:
                     raise ValueError("Filename format invalid for date extraction")
 
@@ -149,7 +149,13 @@ with tabs[1]:
     all_prices = load_all_pivoted()
 
     if not all_prices.empty:
-        st.dataframe(all_prices.T)
+        formatted_dates = [d.strftime('%d %b %Y') for d in all_prices.index]
+        display_prices = all_prices.copy()
+        display_prices.index = formatted_dates
+        df_preview = display_prices.T
+        df_preview.columns.name = "Date (from filename)"
+        st.dataframe(df_preview)
+
         if st.button("Clear All Data"):
             for h in st.session_state.stored_hashes.values():
                 delete_by_hash(h)
