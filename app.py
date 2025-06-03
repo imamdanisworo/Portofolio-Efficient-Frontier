@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import io
 import os
 import hashlib
 import pickle
@@ -14,7 +13,16 @@ STORAGE_DIR = "uploaded_dbf_files"
 META_FILE = "file_metadata.pkl"
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
-# --- Clean padded byte closing prices ---
+# --- Rerun triggers ---
+if 'trigger_rerun' in st.session_state:
+    del st.session_state['trigger_rerun']
+    st.experimental_rerun()
+
+if 'clear_data_trigger' in st.session_state:
+    del st.session_state['clear_data_trigger']
+    st.experimental_rerun()
+
+# --- Helpers ---
 def clean_closing_price(value):
     try:
         if isinstance(value, bytes):
@@ -25,13 +33,11 @@ def clean_closing_price(value):
     except:
         return np.nan
 
-# --- Hashing ---
 def get_file_hash(file):
     content = file.read()
     file.seek(0)
     return hashlib.md5(content).hexdigest(), content
 
-# --- Metadata ---
 def load_metadata():
     try:
         with open(os.path.join(STORAGE_DIR, META_FILE), "rb") as f:
@@ -43,7 +49,6 @@ def save_metadata(meta):
     with open(os.path.join(STORAGE_DIR, META_FILE), "wb") as f:
         pickle.dump(meta, f)
 
-# --- Store pivoted price matrix ---
 def save_combined_prices(df, file_hash):
     prices = df.pivot(index='DATE', columns='STK_CODE', values='STK_CLOS')
     prices.sort_index(inplace=True)
@@ -54,7 +59,6 @@ def save_combined_prices(df, file_hash):
     save_metadata(meta)
     return prices
 
-# --- Load all pivoted data ---
 def load_all_pivoted():
     meta = load_metadata()
     all_frames = []
@@ -71,7 +75,6 @@ def load_all_pivoted():
     else:
         return pd.DataFrame()
 
-# --- Remove stored pivot ---
 def delete_by_hash(hash_value):
     meta = load_metadata()
     for fname, h in list(meta.items()):
@@ -83,12 +86,7 @@ def delete_by_hash(hash_value):
             del meta[fname]
     save_metadata(meta)
 
-# --- Safe rerun ---
-if 'trigger_rerun' in st.session_state:
-    del st.session_state['trigger_rerun']
-    st.experimental_rerun()
-
-# --- App Setup ---
+# --- App Layout ---
 st.set_page_config(page_title="Stock DBF Analyzer", layout="wide")
 st.title("📈 Combined Stock DBF Analyzer")
 
@@ -143,12 +141,12 @@ with tabs[1]:
     all_prices = load_all_pivoted()
 
     if not all_prices.empty:
-        st.dataframe(all_prices.T)  # Stock codes as rows
+        st.dataframe(all_prices.T)
         if st.button("Clear All Data"):
             for h in st.session_state.stored_hashes.values():
                 delete_by_hash(h)
             st.session_state.stored_hashes = {}
-            st.session_state['trigger_rerun'] = True
+            st.session_state['clear_data_trigger'] = True
             st.stop()
     else:
         st.info("No price data available yet.")
