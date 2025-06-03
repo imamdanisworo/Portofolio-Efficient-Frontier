@@ -9,7 +9,11 @@ from dbfread import DBF
 st.set_page_config(page_title="Stock Analyzer (DBF)", layout="wide")
 st.title("📈 DBF Stock Price Analyzer")
 
-uploaded_files = st.file_uploader("Upload daily stock price files (.dbf)", type="dbf", accept_multiple_files=True)
+uploaded_files = st.file_uploader(
+    "Upload daily stock price files (.dbf)", 
+    type="dbf", 
+    accept_multiple_files=True
+)
 
 if uploaded_files:
     all_data = pd.DataFrame()
@@ -24,17 +28,17 @@ if uploaded_files:
             continue
 
         try:
-            table = DBF(file, load=True)
+            # FIX: Read DBF from in-memory buffer
+            table = DBF(io.BytesIO(file.read()), load=True)
             df = pd.DataFrame(iter(table))
             df.columns = df.columns.str.lower().str.strip()
         except Exception as e:
             st.error(f"❌ Error reading {file.name}: {e}")
             continue
 
-        # Check column presence
         required_cols = ['code', 'closing price']
         if not all(col in df.columns for col in required_cols):
-            st.error(f"❌ {file.name} must include these columns: {required_cols}")
+            st.error(f"❌ {file.name} must include columns: {required_cols}")
             continue
 
         df['date'] = file_date
@@ -43,19 +47,19 @@ if uploaded_files:
     if all_data.empty:
         st.warning("⚠️ No valid data collected from uploaded files.")
     else:
-        # Pivot for time series
+        # Pivot data for time series
         prices = all_data.pivot(index='date', columns='code', values='closing price').sort_index()
         st.subheader("📊 Combined Price Table")
         st.dataframe(prices)
 
         if st.button("🔍 Analyze Data"):
+            # Calculate daily returns
             returns = prices.pct_change().dropna()
-
             st.subheader("📉 Daily Returns")
             st.dataframe(returns)
 
-            mean_returns = returns.mean() * 252
-            risk = returns.std() * np.sqrt(252)
+            mean_returns = returns.mean() * 252  # Annualized return
+            risk = returns.std() * np.sqrt(252)  # Annualized volatility
 
             result_df = pd.DataFrame({
                 "Expected Return": mean_returns,
@@ -68,6 +72,7 @@ if uploaded_files:
             st.subheader("📌 Correlation Matrix")
             st.dataframe(returns.corr())
 
+            # Scatter Plot: Risk vs Return
             fig, ax = plt.subplots()
             ax.scatter(result_df["Risk (Volatility)"], result_df["Expected Return"])
             for i, txt in enumerate(result_df.index):
@@ -77,6 +82,7 @@ if uploaded_files:
             ax.set_title("Risk vs Return Scatter Plot")
             st.pyplot(fig)
 
+            # Equal-weighted portfolio suggestion
             st.subheader("💡 Suggested Allocation (Equal Weight)")
             equal_weights = np.repeat(1 / len(mean_returns), len(mean_returns))
             suggestion_df = pd.DataFrame({
