@@ -7,6 +7,7 @@ import pickle
 from datetime import datetime
 import matplotlib.pyplot as plt
 from dbfread import DBF
+from pandas.api.types import is_datetime64_any_dtype
 
 # --- File Storage Setup ---
 STORAGE_DIR = "uploaded_dbf_files"
@@ -51,6 +52,8 @@ def save_metadata(meta):
         pickle.dump(meta, f)
 
 def save_combined_prices(df, file_hash):
+    if not is_datetime64_any_dtype(df['DATE']):
+        df['DATE'] = pd.to_datetime(df['DATE']).dt.date
     prices = df.pivot(index='DATE', columns='STK_CODE', values='STK_CLOS')
     prices.sort_index(inplace=True)
     filename = f"pivot_{file_hash}.pkl"
