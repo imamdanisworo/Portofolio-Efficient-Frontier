@@ -1,15 +1,19 @@
-# Streamlit multi-tab DBF analyzer with persistent session file store
 import streamlit as st
 import pandas as pd
 import numpy as np
 import io
 import os
 import hashlib
+import pickle
 from datetime import datetime
 import matplotlib.pyplot as plt
 from dbfread import DBF
 
-# Helper: clean padded byte strings from DBF closing price fields
+# --- File Persistence ---
+STORAGE_DIR = "uploaded_dbf_files"
+META_FILE = "file_metadata.pkl"
+os.makedirs(STORAGE_DIR, exist_ok=True)
+
 def clean_closing_price(value):
     try:
         if isinstance(value, bytes):
@@ -20,41 +24,75 @@ def clean_closing_price(value):
     except:
         return np.nan
 
-# Hashing to identify duplicate files by content
 def get_file_hash(file):
     content = file.read()
     file.seek(0)
     return hashlib.md5(content).hexdigest(), content
 
-# Initialize session state to store uploaded files
-def init_session():
-    if 'stored_data' not in st.session_state:
-        st.session_state.stored_data = {}
-    if 'stored_hashes' not in st.session_state:
-        st.session_state.stored_hashes = {}
+def save_uploaded_file(filename, df, file_hash):
+    df.to_pickle(os.path.join(STORAGE_DIR, filename + ".pkl"))
+    meta = load_metadata()
+    meta[filename] = file_hash
+    with open(os.path.join(STORAGE_DIR, META_FILE), "wb") as f:
+        pickle.dump(meta, f)
 
-init_session()
+def load_metadata():
+    try:
+        with open(os.path.join(STORAGE_DIR, META_FILE), "rb") as f:
+            return pickle.load(f)
+    except:
+        return {}
 
+def load_all_files():
+    meta = load_metadata()
+    data = {}
+    for filename in meta:
+        try:
+            df = pd.read_pickle(os.path.join(STORAGE_DIR, filename + ".pkl"))
+            data[filename] = df
+        except:
+            continue
+    return data
+
+def delete_file(filename):
+    try:
+        os.remove(os.path.join(STORAGE_DIR, filename + ".pkl"))
+        meta = load_metadata()
+        if filename in meta:
+            del meta[filename]
+            with open(os.path.join(STORAGE_DIR, META_FILE), "wb") as f:
+                pickle.dump(meta, f)
+    except:
+        pass
+
+# --- App Start ---
 st.set_page_config(page_title="Stock DBF Analyzer", layout="wide")
 st.title("📈 Multi-tab Stock DBF Analyzer")
 
+# Initialize persistent file data
+if 'stored_data' not in st.session_state:
+    st.session_state.stored_data = load_all_files()
+
+# --- Tabs ---
 tabs = st.tabs(["📁 Upload Data", "📦 Stored Files", "📊 Analyze Data"])
 
-# Tab 1: Upload DBF Files
+# --- Tab 1: Upload ---
 with tabs[0]:
     st.header("Upload DBF Stock Files")
     uploaded_files = st.file_uploader("Upload DBF files", type="dbf", accept_multiple_files=True)
+
     if uploaded_files:
+        existing_meta = load_metadata()
         for file in uploaded_files:
             file_hash, file_bytes = get_file_hash(file)
             filename = file.name
 
-            if file_hash in st.session_state.stored_hashes.values():
-                st.warning(f"Duplicate file skipped: {filename}")
+            if filename in existing_meta:
+                st.warning(f"File with name '{filename}' already exists and will not be overwritten.")
                 continue
 
-            if filename in st.session_state.stored_data:
-                st.warning(f"Filename already exists and will not be replaced: {filename}")
+            if file_hash in existing_meta.values():
+                st.warning(f"Duplicate file content detected for '{filename}', upload skipped.")
                 continue
 
             try:
@@ -71,17 +109,20 @@ with tabs[0]:
                     file_date = datetime.strptime(date_part, "%d%m%y").date()
                     df['DATE'] = file_date
                     df['STK_CLOS'] = df['STK_CLOS'].apply(clean_closing_price)
+
+                    save_uploaded_file(filename, df[['STK_CODE', 'STK_CLOS', 'DATE']], file_hash)
                     st.session_state.stored_data[filename] = df[['STK_CODE', 'STK_CLOS', 'DATE']]
-                    st.session_state.stored_hashes[filename] = file_hash
-                    st.success(f"Uploaded and stored: {filename}")
+                    st.success(f"Uploaded: {filename}")
                 else:
                     st.error(f"Missing STK_CODE or STK_CLOS in {filename}")
             except Exception as e:
                 st.error(f"Error processing {filename}: {e}")
 
-# Tab 2: Stored Files & Delete Option
+        st.experimental_rerun()
+
+# --- Tab 2: Stored Files ---
 with tabs[1]:
-    st.header("Stored Data Files")
+    st.header("Stored Files")
     if st.session_state.stored_data:
         for name in list(st.session_state.stored_data.keys()):
             col1, col2 = st.columns([4, 1])
@@ -89,13 +130,13 @@ with tabs[1]:
                 st.write(f"📄 {name}")
             with col2:
                 if st.button(f"❌ Delete", key=f"del_{name}"):
+                    delete_file(name)
                     del st.session_state.stored_data[name]
-                    del st.session_state.stored_hashes[name]
-                    st.success(f"Deleted: {name}")
+                    st.experimental_rerun()
     else:
-        st.info("No data files stored.")
+        st.info("No files stored.")
 
-# Tab 3: Analysis
+# --- Tab 3: Analyze ---
 with tabs[2]:
     st.header("Analyze Stored Data")
 
