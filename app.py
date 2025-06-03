@@ -7,6 +7,17 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from dbfread import DBF
 
+# Add this helper function to clean the STK_CLOS values
+def clean_closing_price(value):
+    try:
+        if isinstance(value, bytes):
+            return float(value.decode('utf-8').strip().replace('\x00', ''))
+        elif isinstance(value, str):
+            return float(value.strip())
+        return float(value)
+    except:
+        return np.nan
+
 st.set_page_config(page_title="Stock Analyzer (DBF)", layout="wide")
 st.title("📈 DBF Stock Price Analyzer")
 
@@ -46,6 +57,7 @@ if uploaded_files:
             st.error(f"❌ {file.name} must include columns: {required_cols}")
             continue
 
+        df['STK_CLOS'] = df['STK_CLOS'].apply(clean_closing_price)
         df['DATE'] = file_date
         all_data = pd.concat([all_data, df[['STK_CODE', 'STK_CLOS', 'DATE']]], ignore_index=True)
 
