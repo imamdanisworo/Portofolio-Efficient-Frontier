@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import io
 import os
+import hashlib
 from datetime import datetime
 import matplotlib.pyplot as plt
 from dbfread import DBF
@@ -19,10 +20,18 @@ def clean_closing_price(value):
     except:
         return np.nan
 
+# Hashing to identify duplicate files by content
+def get_file_hash(file):
+    content = file.read()
+    file.seek(0)
+    return hashlib.md5(content).hexdigest(), content
+
 # Initialize session state to store uploaded files
 def init_session():
     if 'stored_data' not in st.session_state:
         st.session_state.stored_data = {}
+    if 'stored_hashes' not in st.session_state:
+        st.session_state.stored_hashes = {}
 
 init_session()
 
@@ -37,28 +46,38 @@ with tabs[0]:
     uploaded_files = st.file_uploader("Upload DBF files", type="dbf", accept_multiple_files=True)
     if uploaded_files:
         for file in uploaded_files:
+            file_hash, file_bytes = get_file_hash(file)
             filename = file.name
-            if filename not in st.session_state.stored_data:
-                try:
-                    temp_path = f"/tmp/{filename}"
-                    with open(temp_path, "wb") as f:
-                        f.write(file.read())
 
-                    table = DBF(temp_path, load=True)
-                    df = pd.DataFrame(iter(table))
-                    df.columns = df.columns.str.upper().str.strip()
+            if file_hash in st.session_state.stored_hashes.values():
+                st.warning(f"Duplicate file skipped: {filename}")
+                continue
 
-                    if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
-                        date_part = filename.replace("CP", "").split('.')[0]
-                        file_date = datetime.strptime(date_part, "%d%m%y").date()
-                        df['DATE'] = file_date
-                        df['STK_CLOS'] = df['STK_CLOS'].apply(clean_closing_price)
-                        st.session_state.stored_data[filename] = df[['STK_CODE', 'STK_CLOS', 'DATE']]
-                        st.success(f"Uploaded and stored: {filename}")
-                    else:
-                        st.error(f"Missing STK_CODE or STK_CLOS in {filename}")
-                except Exception as e:
-                    st.error(f"Error processing {filename}: {e}")
+            if filename in st.session_state.stored_data:
+                st.warning(f"Filename already exists and will not be replaced: {filename}")
+                continue
+
+            try:
+                temp_path = f"/tmp/{filename}"
+                with open(temp_path, "wb") as f:
+                    f.write(file_bytes)
+
+                table = DBF(temp_path, load=True)
+                df = pd.DataFrame(iter(table))
+                df.columns = df.columns.str.upper().str.strip()
+
+                if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
+                    date_part = filename.replace("CP", "").split('.')[0]
+                    file_date = datetime.strptime(date_part, "%d%m%y").date()
+                    df['DATE'] = file_date
+                    df['STK_CLOS'] = df['STK_CLOS'].apply(clean_closing_price)
+                    st.session_state.stored_data[filename] = df[['STK_CODE', 'STK_CLOS', 'DATE']]
+                    st.session_state.stored_hashes[filename] = file_hash
+                    st.success(f"Uploaded and stored: {filename}")
+                else:
+                    st.error(f"Missing STK_CODE or STK_CLOS in {filename}")
+            except Exception as e:
+                st.error(f"Error processing {filename}: {e}")
 
 # Tab 2: Stored Files & Delete Option
 with tabs[1]:
@@ -71,6 +90,7 @@ with tabs[1]:
             with col2:
                 if st.button(f"❌ Delete", key=f"del_{name}"):
                     del st.session_state.stored_data[name]
+                    del st.session_state.stored_hashes[name]
                     st.success(f"Deleted: {name}")
     else:
         st.info("No data files stored.")
