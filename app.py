@@ -30,6 +30,7 @@ def clean_stk_clos(value):
             value = value.decode('utf-8', errors='ignore').replace('\x00', '').strip()
         elif isinstance(value, str):
             value = value.replace('\x00', '').strip()
+        value = ''.join(c for c in value if c.isdigit() or c == '.' or c == '-')
         return float(value)
     except:
         return None
