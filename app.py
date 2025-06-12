@@ -116,7 +116,7 @@ with tab1:
 
 # === TAB 2 ===
 with tab2:
-    st.header("📈 Analyze Price Movement from 'Penutupan'")
+    st.header("📈 Analyze Price Movement from 'penutupan'")
 
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
@@ -139,14 +139,12 @@ with tab2:
 
                 required_cols = ['tanggal perdagangan terakhir', 'kode saham', 'penutupan']
                 if all(col in df.columns for col in required_cols):
-                    df = df[required_cols].rename(columns={
-                        'tanggal perdagangan terakhir': 'DATE',
-                        'kode saham': 'STK_CODE',
-                        'penutupan': 'STK_CLOS'
-                    })
+                    df = df[required_cols].copy()
                     df.dropna(inplace=True)
-                    df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce', format='%d %B %Y')
-                    df.dropna(subset=['DATE'], inplace=True)
+                    df['tanggal perdagangan terakhir'] = pd.to_datetime(
+                        df['tanggal perdagangan terakhir'], dayfirst=True, errors='coerce', format='%d %B %Y'
+                    )
+                    df.dropna(subset=['tanggal perdagangan terakhir'], inplace=True)
                     if not df.empty:
                         data.append(df)
             except Exception as e:
@@ -159,16 +157,18 @@ with tab2:
         st.info("No valid data to analyze.")
         st.stop()
 
-    combined = combined.sort_values("DATE", ascending=False)
+    combined = combined.sort_values("tanggal perdagangan terakhir", ascending=False)
 
-    stock_list = sorted(combined['STK_CODE'].unique())
+    stock_list = sorted(combined['kode saham'].unique())
     selected_stocks = st.multiselect("Select stock codes", stock_list)
     selected_period = st.selectbox("Select analysis period (days)", [20, 50, 100, 200, 500])
 
     if selected_stocks:
-        filtered = combined[combined['STK_CODE'].isin(selected_stocks)].copy()
-        filtered = filtered.groupby('STK_CODE').head(selected_period)
-        pivoted = filtered.pivot(index='DATE', columns='STK_CODE', values='STK_CLOS').sort_index()
+        filtered = combined[combined['kode saham'].isin(selected_stocks)].copy()
+        filtered = filtered.sort_values(['kode saham', 'tanggal perdagangan terakhir'], ascending=[True, False])
+        filtered = filtered.groupby('kode saham').head(selected_period)
+
+        pivoted = filtered.pivot(index='tanggal perdagangan terakhir', columns='kode saham', values='penutupan').sort_index()
         returns = pivoted.pct_change().dropna()
 
         mean_returns = returns.mean()
