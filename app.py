@@ -68,32 +68,66 @@ def load_data_from_hf():
     st.session_state.index_series = pd.Series(index_series).sort_index()
     st.session_state.filename_by_date = filename_by_date
 
-def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
-    num_assets = len(mean_returns)
-
-    def max_return(weights):
-        return -weights @ mean_returns
-
-    def min_volatility(weights):
-        return weights.T @ cov_matrix @ weights
-
-    def neg_sharpe(weights):
-        ret = weights @ mean_returns
-        vol = (weights.T @ cov_matrix @ weights) ** 0.5
-        return -(ret - risk_free_rate) / vol if vol != 0 else float("inf")
-
-    constraints = {"type": "eq", "fun": lambda x: sum(x) - 1}
-    bounds = [(0.0, 0.3)] * num_assets
-    init_guess = [1 / num_assets] * num_assets
-
-    max_ret = minimize(max_return, init_guess, bounds=bounds, constraints=constraints)
-    min_risk = minimize(min_volatility, init_guess, bounds=bounds, constraints=constraints)
-    opt_sharpe = minimize(neg_sharpe, init_guess, bounds=bounds, constraints=constraints)
-
-    return max_ret.x, min_risk.x, opt_sharpe.x
-
 # Tabs
 tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
+
+# Tab 1: Manajemen Data
+with tab1:
+    if "data_by_date" not in st.session_state or "index_series" not in st.session_state:
+        with st.spinner("📦 Mengambil data dari Hugging Face..."):
+            load_data_from_hf()
+
+    data_by_date = st.session_state.get("data_by_date", {})
+    filename_by_date = st.session_state.get("filename_by_date", {})
+    index_series = st.session_state.get("index_series", pd.Series(dtype=float))
+
+    uploaded_files = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
+    if uploaded_files:
+        for file in uploaded_files:
+            try:
+                if "indeks" in file.name.lower():
+                    upload_file(path_or_fileobj=file, path_in_repo=f"index-{file.name}", repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+                    st.success(f"✅ Uploaded Indeks: {file.name}")
+                else:
+                    upload_file(path_or_fileobj=file, path_in_repo=file.name, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+                    st.success(f"✅ Uploaded Saham: {file.name}")
+            except Exception as e:
+                st.error(f"❌ Failed: {file.name} - {e}")
+        st.cache_resource.clear()
+        st.rerun()
+
+    if st.button("🧹 Hapus Semua Data"):
+        try:
+            all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            for file in all_files:
+                if file.lower().endswith(".xlsx"):
+                    delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            st.success("✅ Semua file berhasil dihapus.")
+            st.cache_resource.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(str(e))
+
+    st.markdown(f"📄 **Jumlah File Saham:** {len(data_by_date)}")
+    st.markdown(f"📄 **Jumlah File Indeks:** {len(index_series)}")
+
+    if data_by_date:
+        selected_date = st.selectbox("📆 Pilih Tanggal", sorted(data_by_date.keys(), reverse=True))
+        df_show = data_by_date[selected_date].copy()
+        df_show['Penutupan'] = df_show['Penutupan'].apply(lambda x: f"{x:,.0f}")
+
+        if selected_date in index_series:
+            st.markdown("#### 📊 Ringkasan Indeks (Composite)")
+            st.dataframe(pd.DataFrame({"Composite": [index_series[selected_date]]}), use_container_width=True)
+
+        st.markdown("#### 📋 Data Saham")
+        st.dataframe(df_show, use_container_width=True)
+
+        if st.button("🗑️ Hapus Data Ini"):
+            delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            st.success("✅ Dihapus.")
+            st.cache_resource.clear()
+            st.rerun()
 
 # Tab 2: Analisis Saham
 with tab2:
