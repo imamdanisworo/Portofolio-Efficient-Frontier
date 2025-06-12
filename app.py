@@ -27,10 +27,12 @@ def extract_date_from_filename(name):
 def clean_stk_clos(value):
     try:
         if isinstance(value, bytes):
-            value = value.decode('utf-8', errors='ignore').replace('\x00', '').strip()
+            value = value.decode('utf-8', errors='ignore')
         elif isinstance(value, str):
-            value = value.replace('\x00', '').strip()
-        value = ''.join(c for c in value if c.isdigit() or c == '.' or c == '-')
+            value = value
+
+        value = value.replace('\x00', '').strip()
+        value = ''.join(c for c in value if c.isdigit() or c in ['.', '-'])
         return float(value)
     except:
         return None
