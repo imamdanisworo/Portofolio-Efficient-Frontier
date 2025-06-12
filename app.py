@@ -12,7 +12,7 @@ api = HfApi()
 st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
 st.title("📈 Ringkasan Saham - Kode & Penutupan")
 
-# === Helper: extract date from filename
+# === Helper: Extract date from filename
 def get_date_from_filename(name):
     try:
         base = os.path.splitext(name)[0]
@@ -21,13 +21,14 @@ def get_date_from_filename(name):
     except Exception:
         return None
 
-# === Load Data from HF ===
+# === Load Data from Hugging Face
 def load_existing_files():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
 
     data_by_date = {}
     filename_by_date = {}
+
     for file in xlsx_files:
         try:
             local_path = hf_hub_download(
@@ -44,9 +45,10 @@ def load_existing_files():
                 df_filtered = df[['Kode Saham', 'Penutupan']].copy()
                 df_filtered['Tanggal'] = date
                 data_by_date[date] = df_filtered
-                filename_by_date[date] = file  # store file name for delete
+                filename_by_date[date] = file
         except Exception as e:
             st.warning(f"Gagal memuat: {file} - {e}")
+
     return data_by_date, filename_by_date
 
 # === Upload Section ===
@@ -67,13 +69,33 @@ if uploaded_files:
             st.success(f"✅ Uploaded: {file.name}")
         except Exception as e:
             st.error(f"❌ Gagal upload: {file.name} — {e}")
-    st.experimental_rerun()
+    st.rerun()
 
 # === Refresh Button ===
 if st.button("🔄 Refresh Data"):
-    st.experimental_rerun()
+    st.rerun()
 
-# === Load Data ===
+# === Bulk Delete Section ===
+st.markdown("### ⚠️ Hapus Semua Data")
+
+if st.button("🧹 Hapus SELURUH File Excel dari Dataset"):
+    try:
+        all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+        xlsx_files = [f for f in all_files if f.lower().endswith(".xlsx")]
+
+        for file in xlsx_files:
+            delete_file(
+                path_in_repo=file,
+                repo_id=REPO_ID,
+                repo_type="dataset",
+                token=HF_TOKEN
+            )
+        st.success("✅ Semua file Excel berhasil dihapus.")
+        st.rerun()
+    except Exception as e:
+        st.error(f"❌ Gagal menghapus semua file: {e}")
+
+# === Load and Display Section ===
 st.header("📅 Pilih Tanggal dan Lihat Data")
 
 with st.spinner("📦 Mengambil data dari Hugging Face..."):
@@ -87,7 +109,7 @@ if data_by_date:
         st.subheader(f"📊 Data Penutupan - {selected_date.strftime('%d %b %Y')}")
         st.dataframe(data_by_date[selected_date], use_container_width=True)
 
-        # Delete Button
+        # Delete Button for selected date
         file_to_delete = filename_by_date[selected_date]
         if st.button(f"🗑️ Hapus Data Tanggal Ini ({file_to_delete})"):
             try:
@@ -98,8 +120,8 @@ if data_by_date:
                     token=HF_TOKEN
                 )
                 st.success(f"✅ Berhasil menghapus: {file_to_delete}")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Gagal menghapus: {e}")
 else:
-    st.info("ℹ️ Tidak ada data yang tersedia.")
+    st.info("ℹ️ Tidak ada data yang tersedia. Upload file Excel untuk mulai.")
