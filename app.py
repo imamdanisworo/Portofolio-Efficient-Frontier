@@ -84,7 +84,7 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
         return -(ret - risk_free_rate) / vol if vol != 0 else float("inf")
 
     constraints = {"type": "eq", "fun": lambda x: sum(x) - 1}
-    bounds = [(0.0, 1.0)] * num_assets
+    bounds = [(0.0, 0.3)] * num_assets
     init_guess = [1 / num_assets] * num_assets
 
     max_ret = minimize(max_return, init_guess, bounds=bounds, constraints=constraints)
