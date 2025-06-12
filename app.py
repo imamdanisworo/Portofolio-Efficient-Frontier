@@ -1,11 +1,9 @@
-# Existing imports
+# [SAME IMPORTS AS BEFORE]
 import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
-
-# NEW import
 from scipy.optimize import minimize
 
 # === CONFIG ===
@@ -172,11 +170,11 @@ with tab2:
             })
             st.dataframe(stats_df.style.format("{:.2%}"), use_container_width=True)
 
-            # Correlation
+            # Correlation matrix
             st.markdown("#### 🔗 Korelasi Antar Saham")
             st.dataframe(df_returns.corr().style.format("{:.2f}"), use_container_width=True)
 
-            # Optimization
+            # Optimization results
             w_max, w_min, w_opt = optimize_portfolio(mean_returns, cov_matrix, risk_free_rate)
 
             alloc_df = pd.DataFrame({
@@ -185,5 +183,11 @@ with tab2:
                 "🛡️ Minimum Risk": w_min,
                 "⚖️ Optimum Return": w_opt
             })
+            alloc_df.set_index("Saham", inplace=True)
+
+            sum_row = pd.DataFrame(alloc_df.sum()).T
+            sum_row.index = ["TOTAL"]
+            alloc_df = pd.concat([alloc_df, sum_row])
+
             st.markdown("#### 🧮 Alokasi Optimal Portofolio")
-            st.dataframe(alloc_df.set_index("Saham").applymap(lambda x: f"{x:.2%}"), use_container_width=True)
+            st.dataframe(alloc_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
