@@ -136,9 +136,12 @@ with tab1:
             st.markdown("### 💹 Upload Data Indeks Pasar")
             uploaded_index = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="index")
             if uploaded_index:
-                for file in uploaded_index:
+                progress = st.progress(0)
+                status = st.empty()
+                for i, file in enumerate(uploaded_index):
                     try:
                         new_name = f"index-{file.name}"
+                        status.text(f"📤 Mengunggah: {file.name}")
                         upload_file(
                             path_or_fileobj=file,
                             path_in_repo=new_name,
@@ -149,6 +152,8 @@ with tab1:
                         st.success(f"✅ Uploaded Indeks: {file.name}")
                     except Exception as e:
                         st.error(f"❌ Gagal Upload Indeks: {file.name} - {e}")
+                    progress.progress((i + 1) / len(uploaded_index))
+                status.success("✅ Semua data indeks berhasil diunggah.")
                 st.cache_resource.clear()
                 st.rerun()
 
@@ -190,9 +195,15 @@ with tab1:
 
     if not index_series.empty:
         st.markdown("### 💹 Ringkasan Indeks Pasar: Composite")
-        df_index_display = index_series.rename("Penutupan").reset_index(names="Tanggal")
-        df_index_display["Penutupan"] = df_index_display["Penutupan"].apply(lambda x: f"{x:,.2f}")
-        st.dataframe(df_index_display, use_container_width=True)
+
+        latest_date = index_series.index.max()
+        latest_value = index_series.loc[latest_date]
+        df_summary = pd.DataFrame({
+            "Tanggal": [latest_date],
+            "Penutupan": [f"{latest_value:,.2f}"]
+        })
+
+        st.dataframe(df_summary, use_container_width=True, hide_index=True)
 
 # === Tab 2: Analisis Saham ===
 with tab2:
