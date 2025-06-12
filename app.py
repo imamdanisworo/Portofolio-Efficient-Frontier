@@ -1,8 +1,12 @@
+# Existing imports
 import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
+
+# NEW import
+from scipy.optimize import minimize
 
 # === CONFIG ===
 REPO_ID = "imamdanisworo/dbf-storage"
@@ -12,7 +16,7 @@ api = HfApi()
 st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
 st.markdown("<h1 style='text-align:center;'>📈 Ringkasan Saham</h1>", unsafe_allow_html=True)
 
-# === Helper ===
+# === Helper Functions ===
 def get_date_from_filename(name):
     try:
         base = os.path.splitext(name)[0]
@@ -62,59 +66,57 @@ def load_data_from_hf():
     st.session_state.data_by_date = data_by_date
     st.session_state.filename_by_date = filename_by_date
 
-# === MAIN TABS ===
+def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
+    num_assets = len(mean_returns)
+
+    def max_return(weights):
+        return -weights @ mean_returns
+
+    def min_volatility(weights):
+        return weights.T @ cov_matrix @ weights
+
+    def neg_sharpe(weights):
+        ret = weights @ mean_returns
+        vol = (weights.T @ cov_matrix @ weights) ** 0.5
+        return -(ret - risk_free_rate) / vol if vol != 0 else float("inf")
+
+    constraints = {"type": "eq", "fun": lambda x: sum(x) - 1}
+    bounds = [(0.0, 1.0)] * num_assets
+    init_guess = [1 / num_assets] * num_assets
+
+    max_ret = minimize(max_return, init_guess, bounds=bounds, constraints=constraints)
+    min_risk = minimize(min_volatility, init_guess, bounds=bounds, constraints=constraints)
+    opt_sharpe = minimize(neg_sharpe, init_guess, bounds=bounds, constraints=constraints)
+
+    return max_ret.x, min_risk.x, opt_sharpe.x
+
+# === TABS ===
 tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
 
 # === TAB 1 ===
 with tab1:
-    st.markdown("### 📤 Upload File Excel")
-    uploaded_files = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
-
+    uploaded_files = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
     if uploaded_files:
-        with st.expander("🔄 Status Upload", expanded=True):
-            success_count = 0
-            fail_count = 0
-            progress_bar = st.progress(0)
-            for i, file in enumerate(uploaded_files):
-                try:
-                    upload_file(
-                        path_or_fileobj=file,
-                        path_in_repo=file.name,
-                        repo_id=REPO_ID,
-                        repo_type="dataset",
-                        token=HF_TOKEN
-                    )
-                    st.success(f"✅ {file.name} berhasil diunggah.")
-                    success_count += 1
-                except Exception as e:
-                    st.error(f"❌ {file.name} gagal: {e}")
-                    fail_count += 1
-                progress_bar.progress((i + 1) / len(uploaded_files))
+        for file in uploaded_files:
+            try:
+                upload_file(path_or_fileobj=file, path_in_repo=file.name, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+                st.success(f"✅ Uploaded: {file.name}")
+            except Exception as e:
+                st.error(f"❌ Failed: {file.name} - {e}")
+        st.cache_resource.clear()
+        st.rerun()
 
-        st.success(f"📦 Selesai! {success_count} berhasil, {fail_count} gagal.")
-        if st.button("🔃 Muat Ulang untuk Menampilkan Data Terbaru"):
-            st.cache_resource.clear()
-            st.session_state.pop("data_by_date", None)
-            st.rerun()
-
-    st.markdown("### 🗑️ Hapus Semua Data Excel")
-    if st.button("❌ Hapus SEMUA File Excel dari Dataset"):
+    if st.button("🧹 Hapus Semua Data"):
         try:
             all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-            xlsx_files = [f for f in all_files if f.lower().endswith(".xlsx")]
-            for file in xlsx_files:
-                delete_file(
-                    path_in_repo=file,
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-            st.success("🧹 Semua file berhasil dihapus.")
+            for file in all_files:
+                if file.lower().endswith(".xlsx"):
+                    delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            st.success("✅ Semua file berhasil dihapus.")
             st.cache_resource.clear()
-            st.session_state.pop("data_by_date", None)
             st.rerun()
         except Exception as e:
-            st.error(f"⚠️ Gagal menghapus semua file: {e}")
+            st.error(str(e))
 
     if "data_by_date" not in st.session_state:
         with st.spinner("📦 Mengambil data dari Hugging Face..."):
@@ -123,87 +125,65 @@ with tab1:
     data_by_date = st.session_state.get("data_by_date", {})
     filename_by_date = st.session_state.get("filename_by_date", {})
 
-    st.markdown(f"### 📂 Jumlah File Tersimpan: **{len(filename_by_date)}**")
-    st.markdown("### 📅 Pilih Tanggal untuk Melihat Data")
     if data_by_date:
-        sorted_dates = sorted(data_by_date.keys(), reverse=True)
-        selected_date = st.selectbox("📆 Tanggal:", sorted_dates)
+        selected_date = st.selectbox("📆 Pilih Tanggal", sorted(data_by_date.keys(), reverse=True))
+        df_show = data_by_date[selected_date].copy()
+        df_show['Penutupan'] = df_show['Penutupan'].apply(lambda x: f"{x:,.0f}")
+        st.dataframe(df_show, use_container_width=True)
 
-        df_display = data_by_date[selected_date].copy()
-        df_display['Penutupan'] = df_display['Penutupan'].apply(lambda x: f"{x:,.0f}")
-        st.dataframe(df_display, use_container_width=True)
-
-        file_to_delete = filename_by_date[selected_date]
-        if st.button(f"🗑️ Hapus File Tanggal Ini ({file_to_delete})"):
-            try:
-                delete_file(
-                    path_in_repo=file_to_delete,
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-                st.success(f"✅ Berhasil menghapus: {file_to_delete}")
-                st.cache_resource.clear()
-                st.session_state.pop("data_by_date", None)
-                st.rerun()
-            except Exception as e:
-                st.error(f"❌ Gagal menghapus: {e}")
-    else:
-        st.info("📭 Belum ada data untuk ditampilkan.")
+        if st.button("🗑️ Hapus Data Ini"):
+            delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            st.success("✅ Dihapus.")
+            st.cache_resource.clear()
+            st.rerun()
 
 # === TAB 2 ===
 with tab2:
-    st.markdown("### 📊 Analisis Portofolio Saham")
+    st.markdown("### 📊 Optimasi Portofolio Saham")
     data_by_date = st.session_state.get("data_by_date", {})
+
     if not data_by_date:
-        st.info("Belum ada data untuk dianalisis.")
+        st.warning("Belum ada data.")
     else:
         df_all = pd.concat(data_by_date.values(), ignore_index=True)
         df_all = df_all.sort_values(by="Tanggal", ascending=False)
 
-        unique_stocks = sorted(df_all['Kode Saham'].unique())
-        selected_stocks = st.multiselect("Pilih Kode Saham", options=unique_stocks)
-        period = st.selectbox("Pilih Periode (hari)", options=[20, 50, 100, 200, 500])
-        risk_free_rate = st.number_input("Masukkan Risk-Free Rate (per tahun, %)", value=0.0) / 100
+        stocks = sorted(df_all["Kode Saham"].unique())
+        selected_stocks = st.multiselect("Pilih Saham", stocks)
+        period = st.selectbox("Pilih Periode", [20, 50, 100, 200, 500])
+        risk_free_rate = st.number_input("Risk-Free Rate (per tahun, %)", value=0.0) / 100
 
-        if selected_stocks:
-            if st.button("🔍 Analisis"):
-                df_filtered = df_all[df_all['Kode Saham'].isin(selected_stocks)]
-                recent_dates = sorted(df_filtered['Tanggal'].unique(), reverse=True)[:period]
-                df_recent = df_filtered[df_filtered['Tanggal'].isin(recent_dates)]
+        if selected_stocks and st.button("🔍 Analisis"):
+            df_filtered = df_all[df_all['Kode Saham'].isin(selected_stocks)]
+            recent_dates = sorted(df_filtered['Tanggal'].unique(), reverse=True)[:period]
+            df_recent = df_filtered[df_filtered['Tanggal'].isin(recent_dates)]
 
-                df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
-                df_pivot = df_pivot.sort_index()
-                df_returns = df_pivot.pct_change().dropna()
+            df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
+            df_returns = df_pivot.sort_index().pct_change().dropna()
 
-                # Per-stock stats
-                per_stock_stats = pd.DataFrame({
-                    "Expected Return": df_returns.mean() * 252,
-                    "Volatility (Risk)": df_returns.std() * (252 ** 0.5)
-                })
-                st.markdown("#### 📊 Statistik per Saham (Tahunan)")
-                st.dataframe(per_stock_stats.style.format("{:.2%}"), use_container_width=True)
+            mean_returns = df_returns.mean() * 252
+            cov_matrix = df_returns.cov() * 252
 
-                # Portfolio metrics
-                weights = pd.Series([1 / len(selected_stocks)] * len(selected_stocks), index=selected_stocks)
-                mean_returns = df_returns.mean()
-                cov_matrix = df_returns.cov()
+            # Per-stock stats
+            st.markdown("#### 📈 Statistik Saham (Tahunan)")
+            stats_df = pd.DataFrame({
+                "Expected Return": mean_returns,
+                "Volatility (Risk)": df_returns.std() * (252 ** 0.5)
+            })
+            st.dataframe(stats_df.style.format("{:.2%}"), use_container_width=True)
 
-                port_return_annual = (mean_returns @ weights) * 252
-                port_volatility_annual = (weights.T @ cov_matrix @ weights) ** 0.5 * (252 ** 0.5)
-                sharpe_ratio = (port_return_annual - risk_free_rate) / port_volatility_annual if port_volatility_annual > 0 else 0
+            # Correlation
+            st.markdown("#### 🔗 Korelasi Antar Saham")
+            st.dataframe(df_returns.corr().style.format("{:.2f}"), use_container_width=True)
 
-                st.markdown("#### 📈 Portofolio Gabungan")
-                port_summary = pd.DataFrame({
-                    "Expected Return": [f"{port_return_annual:.2%}"],
-                    "Volatility (Risk)": [f"{port_volatility_annual:.2%}"],
-                    "Sharpe Ratio": [f"{sharpe_ratio:.2f}"]
-                })
-                st.dataframe(port_summary, use_container_width=True)
+            # Optimization
+            w_max, w_min, w_opt = optimize_portfolio(mean_returns, cov_matrix, risk_free_rate)
 
-                # Correlation matrix
-                st.markdown("#### 🔗 Korelasi Antar Saham")
-                corr_table = df_returns.corr()
-                st.dataframe(corr_table.style.format("{:.2f}"), use_container_width=True)
-        else:
-            st.info("Silakan pilih minimal satu kode saham.")
+            alloc_df = pd.DataFrame({
+                "Saham": selected_stocks,
+                "📈 Maksimum Return": w_max,
+                "🛡️ Minimum Risk": w_min,
+                "⚖️ Optimum Return": w_opt
+            })
+            st.markdown("#### 🧮 Alokasi Optimal Portofolio")
+            st.dataframe(alloc_df.set_index("Saham").applymap(lambda x: f"{x:.2%}"), use_container_width=True)
