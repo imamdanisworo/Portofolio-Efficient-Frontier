@@ -232,14 +232,24 @@ with tab2:
                 "CAPM Expected Return": "{:.2%}"
             }), use_container_width=True)
 
-            st.markdown("#### 📊 CAPM & Beta Analysis")
-            st.dataframe(beta_df.style.format({
-                "Beta": "{:.2f}",
-                "CAPM Expected Return": "{:.2%}"
-            }), use_container_width=True)
+            st.markdown("#### 🧠 Gabungan Analisis Saham (CAPM, Beta, Return, Risiko, Korelasi)")
 
-            st.markdown("#### 🔗 Korelasi Antar Saham")
-            st.dataframe(df_returns.corr().style.format("{:.2f}"), use_container_width=True)
+            combined_df = stats_df.copy()
+            correlation_df = df_returns.corr()
+            for stock in combined_df.index:
+                correlations = correlation_df.loc[stock, selected_stocks].drop(stock)
+                avg_corr = correlations.mean() if not correlations.empty else np.nan
+                combined_df.loc[stock, "Avg Correlation"] = avg_corr
+
+            st.dataframe(combined_df.style.format({
+                "Historical Return": "{:.2%}",
+                "Expected Return": "{:.2%}",
+                "Volatility (Risk)": "{:.2%}",
+                "Sharpe Ratio": "{:.2f}",
+                "Beta": "{:.2f}",
+                "CAPM Expected Return": "{:.2%}",
+                "Avg Correlation": "{:.2f}"
+            }), use_container_width=True)
 
             capm_returns = beta_df["CAPM Expected Return"]
             w_max, w_min, w_opt = optimize_portfolio(capm_returns, cov_matrix, risk_free_rate)
