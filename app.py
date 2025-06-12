@@ -22,6 +22,21 @@ def get_date_from_filename(name):
     except Exception:
         return None
 
+@st.cache_resource(show_spinner=False)
+def load_excel_from_hf(filename):
+    try:
+        local_path = hf_hub_download(
+            repo_id=REPO_ID,
+            filename=filename,
+            repo_type="dataset",
+            token=HF_TOKEN,
+            cache_dir="/tmp/huggingface"
+        )
+        return pd.read_excel(local_path)
+    except Exception as e:
+        st.warning(f"⚠️ Gagal memuat: {filename} - {e}")
+        return None
+
 def load_data_from_hf():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
@@ -33,24 +48,15 @@ def load_data_from_hf():
     status = st.empty()
 
     for i, file in enumerate(xlsx_files):
-        try:
-            status.text(f"📥 Memuat: {file}")
-            local_path = hf_hub_download(
-                repo_id=REPO_ID,
-                filename=file,
-                repo_type="dataset",
-                token=HF_TOKEN,
-                cache_dir="/tmp/huggingface"
-            )
-            df = pd.read_excel(local_path)
+        status.text(f"📥 Memuat: {file}")
+        df = load_excel_from_hf(file)
+        if df is not None:
             date = get_date_from_filename(file)
             if date and 'Kode Saham' in df.columns and 'Penutupan' in df.columns:
                 df_filtered = df[['Kode Saham', 'Penutupan']].copy()
                 df_filtered['Tanggal'] = date
                 data_by_date[date] = df_filtered
                 filename_by_date[date] = file
-        except Exception as e:
-            st.warning(f"⚠️ Gagal memuat: {file} - {e}")
         progress_bar.progress((i + 1) / len(xlsx_files))
 
     status.success("✅ Semua file berhasil dimuat.")
@@ -85,6 +91,7 @@ if uploaded_files:
 
     st.success(f"📦 Selesai! {success_count} berhasil, {fail_count} gagal.")
     if st.button("🔃 Muat Ulang untuk Menampilkan Data Terbaru"):
+        st.cache_resource.clear()
         st.session_state.pop("data_by_date", None)
         st.rerun()
 
@@ -103,6 +110,7 @@ if st.button("❌ Hapus SEMUA File Excel dari Dataset"):
                 token=HF_TOKEN
             )
         st.success("🧹 Semua file berhasil dihapus.")
+        st.cache_resource.clear()
         st.session_state.pop("data_by_date", None)
         st.rerun()
     except Exception as e:
@@ -140,6 +148,7 @@ if data_by_date:
                 token=HF_TOKEN
             )
             st.success(f"✅ Berhasil menghapus: {file_to_delete}")
+            st.cache_resource.clear()
             st.session_state.pop("data_by_date", None)
             st.rerun()
         except Exception as e:
