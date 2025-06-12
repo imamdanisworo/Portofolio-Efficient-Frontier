@@ -68,6 +68,7 @@ def load_data_from_hf():
     st.session_state.filename_by_date = filename_by_date
 
 # === Portfolio Optimization ===
+# Removed GARCH-related code
 def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
     num_assets = len(mean_returns)
 
@@ -92,7 +93,7 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
 
     return max_ret.x, min_risk.x, opt_sharpe.x
 
-', 'Risk (GARCH)'])
+
     forecasts = {}
     for stock in df_returns.columns:
         try:
