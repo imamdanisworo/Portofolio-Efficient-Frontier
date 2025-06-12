@@ -200,10 +200,31 @@ with tab2:
     "Historical Return": historical_returns,
     "Expected Return": mean_returns,
     "Volatility (Risk)": volatility,
-    "Sharpe Ratio": sharpe_ratio,
-    "Beta": beta_df["Beta"],
-    "CAPM Expected Return": beta_df["CAPM Expected Return"]
+    "Sharpe Ratio": sharpe_ratio
 })
+
+# Compute CAPM and Beta before using them
+periods_per_year = 252
+daily_rf = (1 + risk_free_rate) ** (1 / periods_per_year) - 1
+excess_market = market_returns - daily_rf
+beta_results = {}
+
+for stock in df_returns.columns:
+    excess_stock = df_returns[stock] - daily_rf
+    cov = np.cov(excess_stock, excess_market)[0][1]
+    var = np.var(excess_market)
+    beta = cov / var if var != 0 else np.nan
+    expected_return = daily_rf + beta * excess_market.mean()
+    beta_results[stock] = {
+        "Beta": beta,
+        "CAPM Expected Return": expected_return * period
+    }
+
+beta_df = pd.DataFrame(beta_results).T
+
+# Add Beta and CAPM to stats_df
+stats_df["Beta"] = beta_df["Beta"]
+stats_df["CAPM Expected Return"] = beta_df["CAPM Expected Return"]
             st.dataframe(stats_df.style.format({
                 "Historical Return": "{:.2%}",
                 "Expected Return": "{:.2%}",
