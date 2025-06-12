@@ -26,6 +26,8 @@ def extract_date_from_filename(name):
 # === File Upload ===
 uploaded_files = st.file_uploader("⬆️ Upload new DBF files", type="dbf", accept_multiple_files=True)
 
+rerun_needed = False
+
 if uploaded_files:
     for file in uploaded_files:
         try:
@@ -33,7 +35,7 @@ if uploaded_files:
             with open(temp_path, "wb") as f:
                 f.write(file.read())
 
-            # 📄 Parse and display immediately before uploading
+            # 📄 Parse and display immediately
             table = DBF(temp_path, load=True)
             df = pd.DataFrame(iter(table))
             df.columns = df.columns.str.upper().str.strip()
@@ -51,13 +53,15 @@ if uploaded_files:
                     token=HF_TOKEN
                 )
                 st.success(f"✅ Uploaded to Hugging Face: {file.name}")
-
-            # 🔄 Rerun to load from HF next time
-            st.info("Refreshing to sync with Hugging Face storage...")
-            st.rerun()
+                rerun_needed = True
 
         except Exception as e:
             st.error(f"❌ Failed to process {file.name}: {e}")
+
+    # 🔄 Rerun once after all uploads
+    if rerun_needed:
+        st.info("Refreshing to sync with Hugging Face storage...")
+        st.rerun()
 
 # === Load .dbf files from HF ===
 st.header("📂 Stored DBF Files from Hugging Face")
