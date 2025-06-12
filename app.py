@@ -73,6 +73,7 @@ with tab1:
                 st.error(f"❌ Failed to upload {file.name}: {e}")
 
         time.sleep(5)
+        st.cache_data.clear()  # clear cache so Tab 2 sees new data
         st.session_state.just_uploaded = True
         st.rerun()
 
@@ -80,7 +81,7 @@ with tab1:
         st.info("No valid Excel files uploaded yet.")
         st.stop()
 
-    st.header("�헕️ Select Date to View")
+    st.header("📅 Select Date to View")
     selected_date = st.selectbox(
         "Choose a date (from uploaded files)", 
         options=sorted(unique_dates, reverse=True),
@@ -111,6 +112,10 @@ with tab1:
 # === TAB 2 ===
 with tab2:
     st.header("📈 Analyze Stock Risk, Return, and Correlation")
+
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
 
     @st.cache_data(show_spinner=False)
     def load_all_data():
