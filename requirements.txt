@@ -5,3 +5,4 @@ matplotlib
 dbfread
 huggingface_hub>=0.14.0
 openpyxl        
+scipy
