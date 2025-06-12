@@ -131,21 +131,23 @@ with tab2:
                 )
                 df = pd.read_excel(local_path)
 
-                # Normalize column names
+                # Normalize and map column names
                 df.columns = df.columns.str.strip().str.lower()
-                rename_map = {
+                col_map = {
                     'tanggal perdagangan terakhir': 'DATE',
                     'kode saham': 'STK_CODE',
                     'penutupan': 'STK_CLOS'
                 }
 
-                if all(col in df.columns for col in rename_map):
-                    df = df[list(rename_map)].rename(columns=rename_map)
+                if all(key in df.columns for key in col_map):
+                    df = df[list(col_map)].rename(columns=col_map)
                     df = df.dropna()
                     df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce', format='%d %B %Y')
                     df = df.dropna(subset=['DATE'])
                     if not df.empty:
                         data.append(df)
+                else:
+                    st.warning(f"Skipping {filename}: Required columns not found.")
             except Exception as e:
                 st.warning(f"Skipping {filename}: {e}")
         return pd.concat(data) if data else pd.DataFrame()
