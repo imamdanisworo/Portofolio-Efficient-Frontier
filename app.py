@@ -176,7 +176,7 @@ with tab2:
                 df_pivot = df_pivot.sort_index()
                 df_returns = df_pivot.pct_change().dropna()
 
-                # === Per-Stock Return & Volatility
+                # Per-stock stats
                 per_stock_stats = pd.DataFrame({
                     "Expected Return": df_returns.mean() * 252,
                     "Volatility (Risk)": df_returns.std() * (252 ** 0.5)
@@ -184,7 +184,7 @@ with tab2:
                 st.markdown("#### 📊 Statistik per Saham (Tahunan)")
                 st.dataframe(per_stock_stats.style.format("{:.2%}"), use_container_width=True)
 
-                # === Portfolio Metrics
+                # Portfolio metrics
                 weights = pd.Series([1 / len(selected_stocks)] * len(selected_stocks), index=selected_stocks)
                 mean_returns = df_returns.mean()
                 cov_matrix = df_returns.cov()
@@ -200,5 +200,10 @@ with tab2:
                     "Sharpe Ratio": [f"{sharpe_ratio:.2f}"]
                 })
                 st.dataframe(port_summary, use_container_width=True)
+
+                # Correlation matrix
+                st.markdown("#### 🔗 Korelasi Antar Saham")
+                corr_table = df_returns.corr()
+                st.dataframe(corr_table.style.format("{:.2f}"), use_container_width=True)
         else:
             st.info("Silakan pilih minimal satu kode saham.")
