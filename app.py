@@ -183,7 +183,7 @@ with tab2:
             recent_dates = sorted(df_filtered['Tanggal'].unique(), reverse=True)[:period]
             df_recent = df_filtered[df_filtered['Tanggal'].isin(recent_dates)]
             df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
-            df_returns = df_pivot.sort_index().pct_change().dropna()
+            df_returns = np.log(df_pivot.sort_index() / df_pivot.sort_index().shift(1)).dropna()
 
             index_filtered = index_series[index_series.index.isin(df_returns.index)]
             market_returns = index_filtered.pct_change().dropna()
@@ -193,6 +193,7 @@ with tab2:
             mean_returns = df_returns.mean() * period
             cov_matrix = df_returns.cov() * period
             volatility = df_returns.std() * (period ** 0.5)
+            avg_corr = df_returns.corr().mean()
             sharpe_ratio = (mean_returns - risk_free_rate) / volatility
 
             # Compute CAPM and Beta before using them
@@ -223,13 +224,15 @@ with tab2:
                 "Beta": beta_df["Beta"],
                 "CAPM Expected Return": beta_df["CAPM Expected Return"]
             })
+            stats_df["Avg Correlation"] = avg_corr[stats_df.index]
             st.dataframe(stats_df.style.format({
                 "Historical Return": "{:.2%}",
                 "Expected Return": "{:.2%}",
                 "Volatility (Risk)": "{:.2%}",
                 "Sharpe Ratio": "{:.2f}",
                 "Beta": "{:.2f}",
-                "CAPM Expected Return": "{:.2%}"
+                "CAPM Expected Return": "{:.2%}",
+                "Avg Correlation": "{:.2f}"
             }), use_container_width=True)
 
             
@@ -244,7 +247,7 @@ with tab2:
                 beta = combined_df.loc[stock, "Beta"]
                 corr = combined_df.loc[stock, "Avg Correlation"] if "Avg Correlation" in combined_df.columns else 1
                 capm = combined_df.loc[stock, "CAPM Expected Return"]
-                adjusted_return = capm * beta * corr
+                adjusted_return = capm / (1 + beta * corr) if beta is not None and corr is not None else 0
                 adjusted_returns.append(adjusted_return)
             adj_return_series = pd.Series(adjusted_returns, index=combined_df.index)
 
