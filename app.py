@@ -12,7 +12,7 @@ api = HfApi()
 st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
 st.title("📈 Ringkasan Saham - Kode & Penutupan")
 
-# === Helper: Extract date from filename
+# === Helper ===
 def get_date_from_filename(name):
     try:
         base = os.path.splitext(name)[0]
@@ -21,8 +21,7 @@ def get_date_from_filename(name):
     except Exception:
         return None
 
-# === Load Data from Hugging Face
-def load_existing_files():
+def load_data_from_hf():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
 
@@ -49,7 +48,9 @@ def load_existing_files():
         except Exception as e:
             st.warning(f"Gagal memuat: {file} - {e}")
 
-    return data_by_date, filename_by_date
+    # Cache in session
+    st.session_state.data_by_date = data_by_date
+    st.session_state.filename_by_date = filename_by_date
 
 # === Upload Section ===
 st.header("⬆️ Upload File Excel")
@@ -69,10 +70,12 @@ if uploaded_files:
             st.success(f"✅ Uploaded: {file.name}")
         except Exception as e:
             st.error(f"❌ Gagal upload: {file.name} — {e}")
+    st.session_state.pop("data_by_date", None)
     st.rerun()
 
 # === Refresh Button ===
 if st.button("🔄 Refresh Data"):
+    st.session_state.pop("data_by_date", None)
     st.rerun()
 
 # === Bulk Delete Section ===
@@ -91,29 +94,33 @@ if st.button("🧹 Hapus SELURUH File Excel dari Dataset"):
                 token=HF_TOKEN
             )
         st.success("✅ Semua file Excel berhasil dihapus.")
+        st.session_state.pop("data_by_date", None)
         st.rerun()
     except Exception as e:
         st.error(f"❌ Gagal menghapus semua file: {e}")
 
-# === Load and Display Section ===
+# === Load Data (once per session unless cleared)
+if "data_by_date" not in st.session_state:
+    with st.spinner("📦 Mengambil data dari Hugging Face..."):
+        load_data_from_hf()
+
+data_by_date = st.session_state.get("data_by_date", {})
+filename_by_date = st.session_state.get("filename_by_date", {})
+
+# === Display Section ===
 st.header("📅 Pilih Tanggal dan Lihat Data")
 
-with st.spinner("📦 Mengambil data dari Hugging Face..."):
-    data_by_date, filename_by_date = load_existing_files()
-
 if data_by_date:
-    all_dates = sorted(data_by_date.keys(), reverse=True)  # ✅ newest first
+    all_dates = sorted(data_by_date.keys(), reverse=True)
     selected_date = st.selectbox("📆 Pilih Tanggal", options=all_dates)
 
     if selected_date:
         st.subheader(f"📊 Data Penutupan - {selected_date.strftime('%d %b %Y')}")
 
-        # Format Penutupan with thousand separator
         df_display = data_by_date[selected_date].copy()
         df_display['Penutupan'] = df_display['Penutupan'].apply(lambda x: f"{x:,.0f}")
         st.dataframe(df_display, use_container_width=True)
 
-        # Delete Button for selected date
         file_to_delete = filename_by_date[selected_date]
         if st.button(f"🗑️ Hapus Data Tanggal Ini ({file_to_delete})"):
             try:
@@ -124,6 +131,7 @@ if data_by_date:
                     token=HF_TOKEN
                 )
                 st.success(f"✅ Berhasil menghapus: {file_to_delete}")
+                st.session_state.pop("data_by_date", None)
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Gagal menghapus: {e}")
