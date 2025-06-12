@@ -8,11 +8,6 @@ import os
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
 from scipy.optimize import minimize
-try:
-    from arch import arch_model  # Added for GARCH modeling
-except ModuleNotFoundError:
-    st.error("Modul 'arch' tidak ditemukan. Jalankan `pip install arch` untuk menggunakan fitur GARCH.")
-    arch_model = None
 
 # === CONFIG ===
 REPO_ID = "imamdanisworo/dbf-storage"
@@ -97,10 +92,7 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
 
     return max_ret.x, min_risk.x, opt_sharpe.x
 
-# === GARCH-based Forecasting ===
-def forecast_garch_returns(df_returns, period):
-    if arch_model is None:
-        return pd.DataFrame(columns=['Expected Return (GARCH)', 'Risk (GARCH)'])
+', 'Risk (GARCH)'])
     forecasts = {}
     for stock in df_returns.columns:
         try:
@@ -218,28 +210,5 @@ with tab2:
             st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode Historis)")
             st.dataframe(alloc_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
 
-            # GARCH Forecast Section
-            garch_df = forecast_garch_returns(df_returns, period)
-            st.markdown("#### 📈 Statistik Saham (GARCH Forecast)")
-            st.dataframe(garch_df.style.format({
-                "Expected Return (GARCH)": "{:.2%}",
-                "Risk (GARCH)": "{:.2%}"
-            }), use_container_width=True)
-
-            # Portfolio allocation based on GARCH forecasts
-            garch_returns = garch_df['Expected Return (GARCH)']
-            garch_risk = garch_df['Risk (GARCH)']
-            garch_cov = df_returns.cov() * period  # Placeholder; ideally use GARCH variance-covariance forecast
-            w_max_g, w_min_g, w_opt_g = optimize_portfolio(garch_returns, garch_cov, risk_free_rate)
-            alloc_garch_df = pd.DataFrame({
-                "Saham": selected_stocks,
-                "📈 Maksimum Return (GARCH)": w_max_g,
-                "🛡️ Minimum Risk (GARCH)": w_min_g,
-                "⚖️ Optimum Return (GARCH)": w_opt_g
-            }).set_index("Saham")
-            sum_row_g = pd.DataFrame(alloc_garch_df.sum()).T
-            sum_row_g.index = ["TOTAL"]
-            alloc_garch_df = pd.concat([alloc_garch_df, sum_row_g])
-            st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode GARCH)")
-            st.dataframe(alloc_garch_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
+            
 
