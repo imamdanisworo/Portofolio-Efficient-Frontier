@@ -101,6 +101,19 @@ with tab1:
             except Exception as e:
                 st.error(f"❌ Failed to delete {dbf_file}: {e}")
 
+    if st.button("🗑️ Delete All XLSX Files from HF Dataset"):
+        for excel_file in excel_files:
+            try:
+                delete_file(
+                    path_in_repo=excel_file,
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    token=HF_TOKEN
+                )
+                st.success(f"✅ Deleted: {excel_file}")
+            except Exception as e:
+                st.error(f"❌ Failed to delete {excel_file}: {e}")
+
     if not unique_dates:
         st.info("No valid Excel files uploaded yet.")
         st.stop()
