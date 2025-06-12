@@ -66,11 +66,11 @@ with tab1:
         try:
             local_path = hf_hub_download(repo_id=REPO_ID, repo_type="dataset", filename=filename, token=HF_TOKEN)
             df = pd.read_excel(local_path)
-            df_display = df.copy()
-            for col in df_display.select_dtypes(include=['number']).columns:
-                df_display[col] = df_display[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "")
+            formatted_df = df.copy()
+            for col in formatted_df.select_dtypes(include=['number']).columns:
+                formatted_df[col] = formatted_df[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "")
             st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
-            st.dataframe(df_display)
+            st.dataframe(formatted_df)
         except Exception as e:
             st.error(f"❌ Error reading {filename}: {e}")
 
@@ -83,25 +83,42 @@ with tab2:
         st.rerun()
 
     @st.cache_data(show_spinner=False)
-    def load_all_data():
-        data = []
+    def load_all_data_with_logs():
+        required_cols = ['tanggal perdagangan terakhir', 'kode saham', 'penutupan']
+        valid_data = []
+        skipped_info = []
+
         for filename, _ in get_valid_files():
             try:
                 local_path = hf_hub_download(repo_id=REPO_ID, repo_type="dataset", filename=filename, token=HF_TOKEN)
                 df = pd.read_excel(local_path)
+                original_cols = df.columns.tolist()
                 df.columns = df.columns.str.strip().str.lower()
-                if all(col in df.columns for col in ['tanggal perdagangan terakhir', 'kode saham', 'penutupan']):
-                    df = df[['tanggal perdagangan terakhir', 'kode saham', 'penutupan']].dropna()
-                    df['tanggal perdagangan terakhir'] = pd.to_datetime(df['tanggal perdagangan terakhir'], dayfirst=True, errors='coerce', format='%d %B %Y')
-                    df = df.dropna(subset=['tanggal perdagangan terakhir'])
-                    data.append(df)
-            except Exception as e:
-                st.warning(f"Skipping {filename}: {e}")
-        return pd.concat(data) if data else pd.DataFrame()
 
-    combined = load_all_data()
+                # Check for required columns
+                if all(col in df.columns for col in required_cols):
+                    df = df[required_cols].dropna()
+                    df['tanggal perdagangan terakhir'] = pd.to_datetime(
+                        df['tanggal perdagangan terakhir'], dayfirst=True, errors='coerce', format='%d %B %Y'
+                    )
+                    df = df.dropna(subset=['tanggal perdagangan terakhir'])
+                    if not df.empty:
+                        valid_data.append(df)
+                else:
+                    skipped_info.append((filename, original_cols))
+            except Exception as e:
+                skipped_info.append((filename, f"Error: {str(e)}"))
+
+        return pd.concat(valid_data) if valid_data else pd.DataFrame(), skipped_info
+
+    combined, skipped_files = load_all_data_with_logs()
+
     if combined.empty:
-        st.info("No valid data to analyze.")
+        st.info("⚠️ No valid data to analyze.")
+        if skipped_files:
+            st.warning("Some files were skipped due to missing columns or errors:")
+            for fname, detail in skipped_files:
+                st.write(f"📂 `{fname}` — Skipped. Columns found: {detail if isinstance(detail, list) else detail}")
         st.stop()
 
     combined = combined.sort_values("tanggal perdagangan terakhir", ascending=False)
