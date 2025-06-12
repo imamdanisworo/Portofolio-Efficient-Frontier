@@ -11,8 +11,8 @@ REPO_ID = "imamdanisworo/dbf-storage"
 HF_TOKEN = st.secrets["HF_TOKEN"]
 api = HfApi()
 
-st.set_page_config(page_title="DBF Viewer & Manager", layout="wide")
-st.title("📁 View, Upload & Manage DBF Files (Hugging Face)")
+st.set_page_config(page_title="📁 DBF Stock Manager", layout="wide")
+st.title("📁 DBF Stock Manager (Hugging Face)")
 
 # === Helper: Extract date from filename like CPyymmdd.dbf ===
 def extract_date_from_filename(name):
@@ -24,99 +24,141 @@ def extract_date_from_filename(name):
         pass
     return None
 
-# === Session flag to prevent infinite rerun
-if 'just_uploaded' not in st.session_state:
-    st.session_state.just_uploaded = False
-
-# === File Upload ===
-uploaded_files = st.file_uploader("⬆️ Upload new DBF files", type="dbf", accept_multiple_files=True)
-
-if uploaded_files and not st.session_state.just_uploaded:
-    for file in uploaded_files:
-        try:
-            temp_path = f"/tmp/{file.name}"
-            with open(temp_path, "wb") as f:
-                f.write(file.read())
-
-            with st.spinner(f"Uploading {file.name} to Hugging Face..."):
-                upload_file(
-                    path_or_fileobj=temp_path,
-                    path_in_repo=file.name,
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-                st.success(f"✅ Uploaded: {file.name}")
-        except Exception as e:
-            st.error(f"❌ Failed to upload {file.name}: {e}")
-
-    # Wait for Hugging Face to sync
-    with st.spinner("⏳ Waiting for Hugging Face to sync..."):
-        time.sleep(5)
-
-    st.session_state.just_uploaded = True
-    st.rerun()
-
-# === Load file list from Hugging Face ===
-st.header("📂 Stored DBF Files from Hugging Face")
+# === File List & Metadata ===
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
-
-# === Extract valid CPyymmdd.dbf files and dates
 valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
 valid_files = [(f, d) for f, d in valid_files if d]
 unique_dates = sorted({d for _, d in valid_files})
 
-# === If no uploaded data, show info
-if not unique_dates:
-    st.info("No valid CPyymmdd.dbf files found in Hugging Face.")
-    st.stop()
+# === Tabs ===
+tab1, tab2 = st.tabs(["📂 Upload & View", "📈 Analyze Stocks"])
 
-# === Dropdown date selector (only valid dates)
-selected_date = st.selectbox(
-    "📅 Select a date to display",
-    options=unique_dates,
-    format_func=lambda d: d.strftime('%d %b %Y')
-)
+# === Session State ===
+if 'just_uploaded' not in st.session_state:
+    st.session_state.just_uploaded = False
 
-# === Display DBF tables only for selected date
-displayed = 0
-for filename, file_date in valid_files:
-    if file_date != selected_date:
-        continue
+# === TAB 1: UPLOAD & VIEW ===
+with tab1:
+    st.header("⬆️ Upload DBF Files")
+    uploaded_files = st.file_uploader("Upload DBF files", type="dbf", accept_multiple_files=True)
 
-    try:
-        local_path = hf_hub_download(
-            repo_id=REPO_ID,
-            repo_type="dataset",
-            filename=filename,
-            token=HF_TOKEN
-        )
+    if uploaded_files and not st.session_state.just_uploaded:
+        for file in uploaded_files:
+            try:
+                temp_path = f"/tmp/{file.name}"
+                with open(temp_path, "wb") as f:
+                    f.write(file.read())
 
-        table = DBF(local_path, load=True)
-        df = pd.DataFrame(iter(table))
-        df.columns = df.columns.str.upper().str.strip()
+                with st.spinner(f"Uploading {file.name} to Hugging Face..."):
+                    upload_file(
+                        path_or_fileobj=temp_path,
+                        path_in_repo=file.name,
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        token=HF_TOKEN
+                    )
+                    st.success(f"✅ Uploaded: {file.name}")
+            except Exception as e:
+                st.error(f"❌ Failed to upload {file.name}: {e}")
 
-        st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
-        st.dataframe(df)
+        time.sleep(5)
+        st.session_state.just_uploaded = True
+        st.rerun()
 
-        if st.button(f"🗑️ Delete {filename}", key=filename):
-            delete_file(
-                path_in_repo=filename,
+    if not unique_dates:
+        st.info("No valid DBF files uploaded yet.")
+        st.stop()
+
+    st.header("📅 Select Date to View")
+    selected_date = st.selectbox(
+        "Choose a date (from uploaded files)", 
+        options=unique_dates,
+        format_func=lambda d: d.strftime('%d %b %Y')
+    )
+
+    # === Display files matching selected date ===
+    for filename, file_date in valid_files:
+        if file_date != selected_date:
+            continue
+
+        try:
+            local_path = hf_hub_download(
                 repo_id=REPO_ID,
                 repo_type="dataset",
+                filename=filename,
                 token=HF_TOKEN
             )
-            st.success(f"🗑️ Deleted: {filename}")
-            st.session_state.just_uploaded = False
-            st.rerun()
+            table = DBF(local_path, load=True)
+            df = pd.DataFrame(iter(table))
+            df.columns = df.columns.str.upper().str.strip()
 
-        displayed += 1
-        if displayed % 2 == 0:
-            st.markdown("### --- 📎 ---")
+            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
+            st.dataframe(df)
 
-    except Exception as e:
-        st.error(f"❌ Error reading or displaying {filename}: {e}")
+            if st.button(f"🗑️ Delete {filename}", key=filename):
+                delete_file(
+                    path_in_repo=filename,
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    token=HF_TOKEN
+                )
+                st.success(f"🗑️ Deleted: {filename}")
+                time.sleep(2)
+                st.rerun()
 
-# === Reset upload flag
-st.session_state.just_uploaded = False
+        except Exception as e:
+            st.error(f"❌ Error reading {filename}: {e}")
+
+    st.session_state.just_uploaded = False
+
+# === TAB 2: ANALYZE STOCKS ===
+with tab2:
+    st.header("📈 Analyze Stock by Closing Price")
+
+    # === Combine all DBFs ===
+    all_data = []
+    for filename, _ in valid_files:
+        try:
+            local_path = hf_hub_download(
+                repo_id=REPO_ID,
+                repo_type="dataset",
+                filename=filename,
+                token=HF_TOKEN
+            )
+            table = DBF(local_path, load=True)
+            df = pd.DataFrame(iter(table))
+            df.columns = df.columns.str.upper().str.strip()
+
+            if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
+                date = extract_date_from_filename(filename)
+                df['DATE'] = pd.to_datetime(date)
+                all_data.append(df[['DATE', 'STK_CODE', 'STK_CLOS']])
+        except Exception as e:
+            st.warning(f"Skipping {filename}: {e}")
+
+    if not all_data:
+        st.info("No analyzable DBF files found.")
+        st.stop()
+
+    combined_df = pd.concat(all_data)
+    combined_df = combined_df.dropna(subset=['STK_CLOS'])
+    combined_df['DATE'] = pd.to_datetime(combined_df['DATE'])
+    combined_df = combined_df.sort_values('DATE', ascending=False)
+
+    # === UI for filtering
+    stock_list = sorted(combined_df['STK_CODE'].unique())
+    selected_stock = st.selectbox("Select stock code", stock_list)
+    period = st.selectbox("Select period (days)", [20, 50, 100, 200, 500])
+
+    # === Filter by stock and latest N days
+    filtered_df = combined_df[combined_df['STK_CODE'] == selected_stock]
+    result = filtered_df.head(period).sort_values('DATE')
+
+    if result.empty:
+        st.warning("No data available for selected stock and period.")
+    else:
+        st.subheader(f"📊 {selected_stock} — Last {period} Days")
+        st.dataframe(result)
+
+        st.line_chart(result.set_index('DATE')['STK_CLOS'])
