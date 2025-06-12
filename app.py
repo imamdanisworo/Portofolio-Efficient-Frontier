@@ -118,9 +118,10 @@ with tab2:
             )
             df = pd.read_excel(local_path)
 
-            if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
-                df['DATE'] = pd.to_datetime(file_date)
-                df = df[['DATE', 'STK_CODE', 'STK_CLOS']].dropna()
+            if all(col in df.columns for col in ['Kode Saham', 'Penutupan', 'Tanggal Perdagangan Terakhir']):
+                df = df[['Tanggal Perdagangan Terakhir', 'Kode Saham', 'Penutupan']].dropna()
+                df.columns = ['DATE', 'STK_CODE', 'STK_CLOS']
+                df['DATE'] = pd.to_datetime(df['DATE'])
                 all_data.append(df)
         except Exception as e:
             st.warning(f"Skipping {filename}: {e}")
