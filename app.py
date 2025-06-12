@@ -232,27 +232,24 @@ with tab2:
                 "CAPM Expected Return": "{:.2%}"
             }), use_container_width=True)
 
-            st.markdown("#### 🧠 Gabungan Analisis Saham (CAPM, Beta, Return, Risiko, Korelasi)")
-
-            combined_df = stats_df.copy()
-            correlation_df = df_returns.corr()
-            for stock in combined_df.index:
-                correlations = correlation_df.loc[stock, selected_stocks].drop(stock)
-                avg_corr = correlations.mean() if not correlations.empty else np.nan
-                combined_df.loc[stock, "Avg Correlation"] = avg_corr
-
-            st.dataframe(combined_df.style.format({
-                "Historical Return": "{:.2%}",
-                "Expected Return": "{:.2%}",
-                "Volatility (Risk)": "{:.2%}",
-                "Sharpe Ratio": "{:.2f}",
-                "Beta": "{:.2f}",
-                "CAPM Expected Return": "{:.2%}",
-                "Avg Correlation": "{:.2f}"
-            }), use_container_width=True)
+            
 
             capm_returns = beta_df["CAPM Expected Return"]
-            w_max, w_min, w_opt = optimize_portfolio(capm_returns, cov_matrix, risk_free_rate)
+
+            # Adjust expected returns using beta and average correlation (risk adjusted CAPM)
+            combined_df = stats_df.copy()
+            correlation_df = df_returns.corr()
+            adjusted_returns = []
+            for stock in combined_df.index:
+                beta = combined_df.loc[stock, "Beta"]
+                corr = combined_df.loc[stock, "Avg Correlation"] if "Avg Correlation" in combined_df.columns else 1
+                capm = combined_df.loc[stock, "CAPM Expected Return"]
+                adjusted_return = capm * beta * corr
+                adjusted_returns.append(adjusted_return)
+            adj_return_series = pd.Series(adjusted_returns, index=combined_df.index)
+
+            # Use adjusted return for allocation
+            w_max, w_min, w_opt = optimize_portfolio(adj_return_series, cov_matrix, risk_free_rate)
             alloc_df = pd.DataFrame({
                 "Saham": selected_stocks,
                 "📈 Maksimum Return": w_max,
@@ -263,5 +260,5 @@ with tab2:
             sum_row.index = ["TOTAL"]
             alloc_df = pd.concat([alloc_df, sum_row])
 
-            st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode Historis)")
+            st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode CAPM, Beta & Korelasi)")
             st.dataframe(alloc_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
