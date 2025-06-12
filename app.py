@@ -67,41 +67,53 @@ def load_data_from_hf():
     st.session_state.index_series = pd.Series(index_series).sort_index()
     st.session_state.filename_by_date = filename_by_date
 
-# ✅ Load data on first run WITH spinner
+# ✅ Load only once at app start
 if "data_by_date" not in st.session_state or "index_series" not in st.session_state:
-    with st.spinner("📦 Memuat data dari Hugging Face..."):
+    with st.spinner("📦 Memuat data awal dari Hugging Face..."):
         load_data_from_hf()
 
-data_by_date = st.session_state.get("data_by_date", {})
-index_series = st.session_state.get("index_series", pd.Series(dtype=float))
-filename_by_date = st.session_state.get("filename_by_date", {})
+data_by_date = st.session_state["data_by_date"]
+index_series = st.session_state["index_series"]
+filename_by_date = st.session_state["filename_by_date"]
 
 # Upload Section
 st.markdown("### 🔼 Upload Data")
+
+def process_uploaded_file(file, is_index=False):
+    try:
+        name_in_repo = f"index-{file.name}" if is_index else file.name
+        upload_file(path_or_fileobj=file, path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+        df = pd.read_excel(file)
+        date = get_date_from_filename(file.name)
+        if date:
+            if is_index and "Kode Indeks" in df.columns and "Penutupan" in df.columns:
+                df_filtered = df[df["Kode Indeks"].str.lower() == "composite"]
+                if not df_filtered.empty:
+                    index_series[date] = df_filtered.iloc[0]["Penutupan"]
+            elif not is_index and "Kode Saham" in df.columns and "Penutupan" in df.columns:
+                df_filtered = df[["Kode Saham", "Penutupan"]].copy()
+                df_filtered["Tanggal"] = date
+                data_by_date[date] = df_filtered
+                filename_by_date[date] = name_in_repo
+        return True, f"✅ {file.name} berhasil diunggah"
+    except Exception as e:
+        return False, f"❌ Gagal unggah {file.name}: {e}"
 
 col1, col2 = st.columns(2)
 with col1:
     index_files = st.file_uploader("Upload File Indeks (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="index")
     if index_files:
         for file in index_files:
-            try:
-                upload_file(path_or_fileobj=file, path_in_repo=f"index-{file.name}", repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-                st.success(f"✅ Index uploaded: {file.name}")
-            except Exception as e:
-                st.error(f"❌ Gagal upload: {file.name} - {e}")
-        st.cache_resource.clear()
+            success, msg = process_uploaded_file(file, is_index=True)
+            st.success(msg) if success else st.error(msg)
         st.rerun()
 
 with col2:
     stock_files = st.file_uploader("Upload File Saham (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="saham")
     if stock_files:
         for file in stock_files:
-            try:
-                upload_file(path_or_fileobj=file, path_in_repo=file.name, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-                st.success(f"✅ Saham uploaded: {file.name}")
-            except Exception as e:
-                st.error(f"❌ Gagal upload: {file.name} - {e}")
-        st.cache_resource.clear()
+            success, msg = process_uploaded_file(file, is_index=False)
+            st.success(msg) if success else st.error(msg)
         st.rerun()
 
 # Delete All Button
