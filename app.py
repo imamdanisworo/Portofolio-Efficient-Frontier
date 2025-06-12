@@ -155,7 +155,7 @@ with tab1:
 
 # Tab 2: Analisis Saham
 with tab2:
-    st.markdown("### 📊 Optimasi Portofolio Saham")
+    st.markdown("### 📊 Analisis Statistik Saham")
 
     if "data_by_date" not in st.session_state or "index_series" not in st.session_state:
         with st.spinner("📦 Mengambil data dari Hugging Face..."):
@@ -236,43 +236,3 @@ with tab2:
                 "CAPM Expected Return": "{:.2%}",
                 "Avg Correlation": "{:.2f}"
             }), use_container_width=True)
-
-            # ✅ Use CAPM expected return directly
-            adj_return_series = beta_df["CAPM Expected Return"]
-
-            # Optimize portfolio
-            w_max, w_min, w_opt = optimize_portfolio(adj_return_series.values, cov_matrix.values, risk_free_rate)
-
-            # ✅ Normalize weights to sum exactly 100%
-            def normalize_weights(weights):
-                weights = np.maximum(weights, 0)  # remove small negatives
-                normalized = weights / weights.sum()
-                return np.round(normalized, 6)  # precision to 6 decimals
-
-            w_max = normalize_weights(w_max)
-            w_min = normalize_weights(w_min)
-            w_opt = normalize_weights(w_opt)
-
-            alloc_df = pd.DataFrame({
-                "Saham": stats_df.index,
-                "📈 Maksimum Return": w_max,
-                "🛡️ Minimum Risk": w_min,
-                "⚖️ Optimum Return": w_opt
-            }).set_index("Saham")
-
-            sum_row = pd.DataFrame(alloc_df.sum()).T
-            sum_row.index = ["TOTAL"]
-            alloc_df = pd.concat([alloc_df, sum_row])
-
-            st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode CAPM)")
-            st.dataframe(alloc_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
-
-            # Portfolio stats for optimum return portfolio
-            port_ret = np.dot(w_opt, adj_return_series.values)
-            port_vol = np.sqrt(np.dot(w_opt.T, np.dot(cov_matrix.values, w_opt)))
-            port_sharpe = (port_ret - risk_free_rate) / port_vol if port_vol != 0 else 0
-
-            st.markdown("#### 📌 Statistik Portofolio Optimal")
-            st.metric("Expected Return", f"{port_ret:.2%}")
-            st.metric("Volatility (Risk)", f"{port_vol:.2%}")
-            st.metric("Sharpe Ratio", f"{port_sharpe:.2f}")
