@@ -121,7 +121,8 @@ with tab2:
             if all(col in df.columns for col in ['Kode Saham', 'Penutupan', 'Tanggal Perdagangan Terakhir']):
                 df = df[['Tanggal Perdagangan Terakhir', 'Kode Saham', 'Penutupan']].dropna()
                 df.columns = ['DATE', 'STK_CODE', 'STK_CLOS']
-                df['DATE'] = pd.to_datetime(df['DATE'])
+                df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce', format='%d %B %Y')
+                df = df.dropna(subset=['DATE'])
                 all_data.append(df)
         except Exception as e:
             st.warning(f"Skipping {filename}: {e}")
