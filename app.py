@@ -197,11 +197,13 @@ with tab2:
 
             st.markdown(f"#### 📈 Statistik Saham (Periode: {period} hari)")
             stats_df = pd.DataFrame({
-                "Historical Return": historical_returns,
-                "Expected Return": mean_returns,
-                "Volatility (Risk)": volatility,
-                "Sharpe Ratio": sharpe_ratio
-            })
+    "Historical Return": historical_returns,
+    "Expected Return": mean_returns,
+    "Volatility (Risk)": volatility,
+    "Sharpe Ratio": sharpe_ratio,
+    "Beta": beta_df["Beta"],
+    "CAPM Expected Return": beta_df["CAPM Expected Return"]
+})
             st.dataframe(stats_df.style.format({
                 "Historical Return": "{:.2%}",
                 "Expected Return": "{:.2%}",
@@ -235,7 +237,8 @@ with tab2:
             st.markdown("#### 🔗 Korelasi Antar Saham")
             st.dataframe(df_returns.corr().style.format("{:.2f}"), use_container_width=True)
 
-            w_max, w_min, w_opt = optimize_portfolio(mean_returns, cov_matrix, risk_free_rate)
+            capm_returns = beta_df["CAPM Expected Return"]
+w_max, w_min, w_opt = optimize_portfolio(capm_returns, cov_matrix, risk_free_rate)
             alloc_df = pd.DataFrame({
                 "Saham": selected_stocks,
                 "📈 Maksimum Return": w_max,
