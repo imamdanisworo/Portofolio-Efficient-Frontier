@@ -41,11 +41,14 @@ def load_existing_files():
     return data_by_date
 
 # === Upload Section ===
-uploaded_files = st.file_uploader("⬆️ Upload file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
+st.header("⬆️ Upload Data Ringkasan Saham")
+
+uploaded_files = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
 
 if uploaded_files:
     for file in uploaded_files:
         try:
+            # Upload to Hugging Face dataset
             upload_file(
                 path_or_fileobj=file,
                 path_in_repo=file.name,
@@ -53,9 +56,10 @@ if uploaded_files:
                 repo_type="dataset",
                 token=HF_TOKEN
             )
-            st.success(f"✅ Uploaded to HF: {file.name}")
+            st.success(f"✅ Uploaded: {file.name}")
         except Exception as e:
-            st.error(f"❌ Upload failed: {file.name} - {e}")
+            st.error(f"❌ Gagal upload: {file.name} — {e}")
+    # Clear cache and rerun
     st.cache_data.clear()
     st.rerun()
 
