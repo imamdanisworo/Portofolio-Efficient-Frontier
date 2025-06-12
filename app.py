@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import os
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
@@ -19,7 +18,7 @@ api = get_hf_api()
 # Header
 st.markdown("<h2 style='text-align:center;'>📈 Ringkasan Saham</h2>", unsafe_allow_html=True)
 
-# Helper
+# Helpers
 def get_date_from_filename(name):
     try:
         date_part = os.path.splitext(name)[0].split("-")[-1]
@@ -119,18 +118,26 @@ uploaded_any = False
 with col1:
     index_files = st.file_uploader("Upload File Indeks (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_index")
     if index_files:
-        for file in index_files:
+        progress = st.progress(0, "📤 Mengunggah file indeks...")
+        total = len(index_files)
+        for i, file in enumerate(index_files):
             success, msg = process_file(file, is_index=True)
             st.success(msg) if success else st.error(msg)
+            progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
             uploaded_any = uploaded_any or success
+        progress.empty()
 
 with col2:
     stock_files = st.file_uploader("Upload File Saham (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_saham")
     if stock_files:
-        for file in stock_files:
+        progress = st.progress(0, "📤 Mengunggah file saham...")
+        total = len(stock_files)
+        for i, file in enumerate(stock_files):
             success, msg = process_file(file, is_index=False)
             st.success(msg) if success else st.error(msg)
+            progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
             uploaded_any = uploaded_any or success
+        progress.empty()
 
 if uploaded_any:
     st.cache_data.clear()
@@ -139,17 +146,18 @@ if uploaded_any:
 # Delete All
 st.divider()
 if st.button("🧹 Hapus Semua Data"):
-    try:
-        all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-        for file in all_files:
-            if file.lower().endswith(".xlsx"):
-                delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
-        st.success("✅ Semua file berhasil dihapus.")
-        st.cache_data.clear()
-        st.session_state.clear()
-        st.rerun()
-    except Exception as e:
-        st.error(str(e))
+    with st.spinner("🚮 Menghapus semua file dari Hugging Face..."):
+        try:
+            all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            for file in all_files:
+                if file.lower().endswith(".xlsx"):
+                    delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            st.success("✅ Semua file berhasil dihapus.")
+            st.cache_data.clear()
+            st.session_state.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(str(e))
 
 # Viewer
 st.divider()
