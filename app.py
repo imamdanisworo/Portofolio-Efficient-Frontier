@@ -80,7 +80,7 @@ with tab1:
         st.info("No valid Excel files uploaded yet.")
         st.stop()
 
-    st.header("🗕️ Select Date to View")
+    st.header("�헕️ Select Date to View")
     selected_date = st.selectbox(
         "Choose a date (from uploaded files)", 
         options=sorted(unique_dates, reverse=True),
@@ -143,15 +143,14 @@ with tab2:
                         data.append(df)
             except Exception as e:
                 st.warning(f"Skipping {filename}: {e}")
-        return data
+        return pd.concat(data) if data else pd.DataFrame()
 
-    all_data = load_all_data()
+    combined = load_all_data()
 
-    if not all_data:
+    if combined.empty:
         st.info("No valid data to analyze.")
         st.stop()
 
-    combined = pd.concat(all_data)
     combined = combined.sort_values('DATE', ascending=False)
 
     if 'STK_CODE' not in combined.columns or combined['STK_CODE'].nunique() == 0:
