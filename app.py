@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from huggingface_hub import upload_file, HfApi, hf_hub_download
+from huggingface_hub import upload_file, HfApi, hf_hub_download, delete_file
 import os
 from datetime import datetime
 import time
@@ -10,23 +10,24 @@ REPO_ID = "imamdanisworo/dbf-storage"
 HF_TOKEN = st.secrets["HF_TOKEN"]
 api = HfApi()
 
-st.set_page_config(page_title="📁 Ringkasan Saham", layout="wide")
-st.title("📁 Ringkasan Saham (Hugging Face)")
+st.set_page_config(page_title="📁 DBF Stock Manager", layout="wide")
+st.title("📁 DBF Stock Manager (Hugging Face)")
 
 # === Helper ===
 def extract_date_from_filename(name):
     try:
         base = os.path.splitext(name)[0]
-        date_str = base.split("-")[-1]  # Expecting Ringkasan Saham-YYYYMMDD.xlsx
-        return datetime.strptime(date_str, "%Y%m%d").date()
+        date_part = base.split("-")[-1]
+        return datetime.strptime(date_part, "%Y%m%d").date()
     except:
         return None
 
 # === File list ===
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 excel_files = sorted([f for f in files if f.lower().endswith(".xlsx")])
-valid_files = [(f, extract_date_from_filename(f)) for f in excel_files if extract_date_from_filename(f)]
-unique_dates = sorted({d for _, d in valid_files})
+valid_files = [(f, extract_date_from_filename(f)) for f in excel_files]
+valid_files = [(f, d) for f, d in valid_files if d]
+unique_dates = sorted({d for _, d in valid_files}, reverse=True)
 
 # === Tabs ===
 tab1, tab2 = st.tabs(["📂 Upload & View", "📈 Analyze Stocks"])
@@ -36,63 +37,69 @@ if 'just_uploaded' not in st.session_state:
 
 # === TAB 1 ===
 with tab1:
-    st.header("⬆️ Upload Ringkasan Saham (.xlsx)")
-    uploaded_files = st.file_uploader("Upload Excel files", type="xlsx", accept_multiple_files=True)
+    st.header("⬆️ Upload Excel Files")
+    uploaded_files = st.file_uploader("Upload Excel files (Ringkasan Saham-yyyyMMdd.xlsx)", type="xlsx", accept_multiple_files=True)
 
     if uploaded_files and not st.session_state.just_uploaded:
         for file in uploaded_files:
-            filename = file.name
-            if extract_date_from_filename(filename) is None:
-                st.warning(f"⚠️ Filename format invalid (should include date): {filename}")
-                continue
-
             try:
-                temp_path = f"/tmp/{filename}"
-                with open(temp_path, "wb") as f:
-                    f.write(file.read())
+                excel_filename = file.name
 
-                if filename in excel_files:
-                    st.warning(f"⚠️ Overwriting: {filename}")
-
-                with st.spinner(f"Uploading {filename} to Hugging Face..."):
-                    upload_file(
-                        path_or_fileobj=temp_path,
-                        path_in_repo=filename,
+                if excel_filename in excel_files:
+                    delete_file(
+                        path_in_repo=excel_filename,
                         repo_id=REPO_ID,
                         repo_type="dataset",
                         token=HF_TOKEN
                     )
-                    st.success(f"✅ Uploaded: {filename}")
-            except Exception as e:
-                st.error(f"❌ Failed to upload {filename}: {e}")
+                    st.warning(f"⚠️ Overwriting: {excel_filename}")
 
-        time.sleep(3)
+                with st.spinner(f"Uploading {excel_filename} to Hugging Face..."):
+                    upload_file(
+                        path_or_fileobj=file,
+                        path_in_repo=excel_filename,
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        token=HF_TOKEN
+                    )
+                    st.success(f"✅ Uploaded: {excel_filename}")
+
+            except Exception as e:
+                st.error(f"❌ Failed to upload {file.name}: {e}")
+
+        time.sleep(5)
         st.session_state.just_uploaded = True
         st.rerun()
 
     if not unique_dates:
-        st.info("No uploaded Excel files found.")
+        st.info("No valid Excel files uploaded yet.")
         st.stop()
 
     st.header("📅 Select Date to View")
     selected_date = st.selectbox(
-        "Choose a date", options=unique_dates, format_func=lambda d: d.strftime('%d %b %Y')
+        "Choose a date (from uploaded files)", 
+        options=sorted(unique_dates, reverse=True),
+        format_func=lambda d: d.strftime('%d %b %Y')
     )
 
     for filename, file_date in valid_files:
-        if file_date == selected_date:
-            try:
-                local_path = hf_hub_download(
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    filename=filename,
-                    token=HF_TOKEN
-                )
-                df = pd.read_excel(local_path)
-                st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
-                st.dataframe(df)
-            except Exception as e:
-                st.error(f"❌ Error reading {filename}: {e}")
+        if file_date != selected_date:
+            continue
+
+        try:
+            local_path = hf_hub_download(
+                repo_id=REPO_ID,
+                repo_type="dataset",
+                filename=filename,
+                token=HF_TOKEN
+            )
+            df = pd.read_excel(local_path)
+
+            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
+            st.dataframe(df)
+
+        except Exception as e:
+            st.error(f"❌ Error reading {filename}: {e}")
 
     st.session_state.just_uploaded = False
 
@@ -111,16 +118,15 @@ with tab2:
             )
             df = pd.read_excel(local_path)
 
-            if 'Kode Saham' in df.columns and 'Penutupan' in df.columns:
-                df['DATE'] = pd.to_datetime(df['Tanggal Perdagangan Terakhir'], errors='coerce')
-                df = df[['DATE', 'Kode Saham', 'Penutupan']].dropna()
-                df.columns = ['DATE', 'STK_CODE', 'STK_CLOS']
+            if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
+                df['DATE'] = pd.to_datetime(file_date)
+                df = df[['DATE', 'STK_CODE', 'STK_CLOS']].dropna()
                 all_data.append(df)
         except Exception as e:
             st.warning(f"Skipping {filename}: {e}")
 
     if not all_data:
-        st.info("No valid stock data found.")
+        st.info("No valid data to analyze.")
         st.stop()
 
     combined = pd.concat(all_data)
