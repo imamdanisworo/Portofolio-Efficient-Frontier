@@ -34,6 +34,7 @@ def dbf_to_excel(dbf_path, excel_path):
 # === File list ===
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 excel_files = sorted([f for f in files if f.lower().endswith(".xlsx")])
+dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 valid_files = [(f, extract_date_from_filename(f)) for f in excel_files]
 valid_files = [(f, d) for f, d in valid_files if d]
 unique_dates = sorted({d for _, d in valid_files})
@@ -86,6 +87,19 @@ with tab1:
         time.sleep(5)
         st.session_state.just_uploaded = True
         st.rerun()
+
+    if st.button("🗑️ Delete All DBF Files from HF Dataset"):
+        for dbf_file in dbf_files:
+            try:
+                delete_file(
+                    path_in_repo=dbf_file,
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    token=HF_TOKEN
+                )
+                st.success(f"✅ Deleted: {dbf_file}")
+            except Exception as e:
+                st.error(f"❌ Failed to delete {dbf_file}: {e}")
 
     if not unique_dates:
         st.info("No valid Excel files uploaded yet.")
