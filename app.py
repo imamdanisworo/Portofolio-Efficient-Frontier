@@ -172,7 +172,11 @@ with tab2:
                 "Volatility (Risk)": volatility,
                 "Sharpe Ratio": sharpe_ratio
             })
-            st.dataframe(stats_df.style.format("{:.2%}").format({"Sharpe Ratio": "{:.2f}"}), use_container_width=True)
+            st.dataframe(stats_df.style.format({
+                "Expected Return": "{:.2%}",
+                "Volatility (Risk)": "{:.2%}",
+                "Sharpe Ratio": "{:.2f}"
+            }), use_container_width=True)
 
             st.markdown("#### 🔗 Korelasi Antar Saham")
             st.dataframe(df_returns.corr().style.format("{:.2f}"), use_container_width=True)
