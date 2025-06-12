@@ -42,7 +42,7 @@ def load_excel_from_hf(filename):
 def load_data_from_hf():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
-    
+
     stock_by_date = {}
     index_series = {}
     filename_by_date = {}
@@ -67,6 +67,7 @@ def load_data_from_hf():
     st.session_state.data_by_date = stock_by_date
     st.session_state.index_series = pd.Series(index_series).sort_index()
     st.session_state.filename_by_date = filename_by_date
+
 
 def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
     num_assets = len(mean_returns)
@@ -94,6 +95,30 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
 
 # Tabs
 tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
+
+# Tab 1: Manajemen Data
+with tab1:
+    st.markdown("### 📂 Upload Data")
+    uploaded_stocks = st.file_uploader("Upload Ringkasan Saham (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="saham")
+    uploaded_indexes = st.file_uploader("Upload Ringkasan Indeks (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="indeks")
+
+    if uploaded_stocks:
+        for file in uploaded_stocks:
+            try:
+                upload_file(path_or_fileobj=file, path_in_repo=file.name, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+                st.success(f"✅ Uploaded Saham: {file.name}")
+            except Exception as e:
+                st.error(f"❌ Gagal Upload: {file.name} - {e}")
+        st.cache_resource.clear()
+
+    if uploaded_indexes:
+        for file in uploaded_indexes:
+            try:
+                upload_file(path_or_fileobj=file, path_in_repo=f"index-{file.name}", repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+                st.success(f"✅ Uploaded Indeks: {file.name}")
+            except Exception as e:
+                st.error(f"❌ Gagal Upload: {file.name} - {e}")
+        st.cache_resource.clear()
 
 # Tab 2: Analisis Saham
 with tab2:
