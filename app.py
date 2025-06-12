@@ -130,9 +130,10 @@ with tab2:
                     df.columns = ['DATE', 'STK_CODE', 'STK_CLOS']
                     df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce', format='%d %B %Y')
                     df = df.dropna(subset=['DATE'])
-                    data.append(df)
-            except:
-                continue
+                    if not df.empty:
+                        data.append(df)
+            except Exception as e:
+                st.warning(f"Skipping {filename}: {e}")
         return data
 
     all_data = load_all_data(valid_files)
@@ -143,6 +144,10 @@ with tab2:
 
     combined = pd.concat(all_data)
     combined = combined.sort_values('DATE', ascending=False)
+
+    if 'STK_CODE' not in combined.columns or combined['STK_CODE'].nunique() == 0:
+        st.warning("No stock codes found in the data. Please check the uploaded files.")
+        st.stop()
 
     stock_list = sorted(combined['STK_CODE'].unique())
     selected_stocks = st.multiselect("Select stock codes", stock_list)
