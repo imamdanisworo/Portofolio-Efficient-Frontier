@@ -237,6 +237,11 @@ with tab2:
                 "Avg Correlation": "{:.2f}"
             }), use_container_width=True)
 
+            # Show debug inputs
+            st.write("📊 Debug: Expected Return (Historical)", mean_returns)
+            st.write("📊 Debug: Expected Return (CAPM)", beta_df["CAPM Expected Return"])
+            st.write("📉 Debug: Covariance Matrix", cov_matrix)
+
             # Portfolio Optimization Utilities
             def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
                 num_assets = len(mean_returns)
@@ -253,7 +258,7 @@ with tab2:
                     return -(ret - risk_free_rate) / vol if vol != 0 else float("inf")
 
                 constraints = {"type": "eq", "fun": lambda x: sum(x) - 1}
-                bounds = [(0.0, 1.0)] * num_assets
+                bounds = [(0.0, 0.3)] * num_assets  # ✅ Limit to 30% per stock
                 init_guess = [1 / num_assets] * num_assets
 
                 max_ret = minimize(max_return, init_guess, bounds=bounds, constraints=constraints)
@@ -264,13 +269,18 @@ with tab2:
 
             def normalize_weights(weights):
                 weights = np.maximum(weights, 0)
-                return np.round(weights / weights.sum(), 6)
+                total = weights.sum()
+                return np.round(weights / total, 6) if total > 0 else weights
 
             def run_portfolio_analysis(name, expected_returns):
                 w_max, w_min, w_opt = optimize_portfolio(expected_returns.values, cov_matrix.values, risk_free_rate)
                 w_max = normalize_weights(w_max)
                 w_min = normalize_weights(w_min)
                 w_opt = normalize_weights(w_opt)
+
+                # Warning if optimizer fails
+                if np.allclose(w_max, 0) or np.allclose(w_min, 0) or np.allclose(w_opt, 0):
+                    st.warning(f"⚠️ Optimizer returned zero weights for: {name}. Check your data input (covariance or returns).")
 
                 df = pd.DataFrame({
                     "Saham": expected_returns.index,
@@ -287,7 +297,7 @@ with tab2:
                 st.dataframe(df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
 
             st.markdown("#### 🧮 Alokasi Portofolio Berdasarkan Optimasi")
-            st.write("📌 Semua bobot dijumlahkan menjadi 100%. Perbandingan antara metode: menggunakan *Expected Return* historis vs. berdasarkan *CAPM*.")
+            st.write("📌 Semua bobot dibatasi maksimum 30% per saham. Perbandingan antara metode: menggunakan *Expected Return* historis vs. berdasarkan *CAPM*.")
 
             run_portfolio_analysis("Historical Mean Return", mean_returns)
             run_portfolio_analysis("CAPM Expected Return", beta_df["CAPM Expected Return"])
