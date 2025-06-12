@@ -23,10 +23,15 @@ def extract_date_from_filename(name):
         return None
 
 # === File list ===
-files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-excel_files = sorted([f for f in files if f.lower().endswith(".xlsx")])
-valid_files = [(f, extract_date_from_filename(f)) for f in excel_files]
-valid_files = [(f, d) for f, d in valid_files if d]
+@st.cache_data(show_spinner=False)
+def get_valid_files():
+    files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+    excel_files = sorted([f for f in files if f.lower().endswith(".xlsx")])
+    valid_files = [(f, extract_date_from_filename(f)) for f in excel_files]
+    valid_files = [(f, d) for f, d in valid_files if d]
+    return valid_files
+
+valid_files = get_valid_files()
 unique_dates = sorted({d for _, d in valid_files}, reverse=True)
 
 # === Tabs ===
@@ -45,7 +50,7 @@ with tab1:
             try:
                 excel_filename = file.name
 
-                if excel_filename in excel_files:
+                if excel_filename in [f for f, _ in valid_files]:
                     delete_file(
                         path_in_repo=excel_filename,
                         repo_id=REPO_ID,
@@ -107,32 +112,36 @@ with tab1:
 with tab2:
     st.header("📈 Analyze Stock Risk, Return, and Correlation")
 
-    all_data = []
-    for filename, file_date in valid_files:
-        try:
-            local_path = hf_hub_download(
-                repo_id=REPO_ID,
-                repo_type="dataset",
-                filename=filename,
-                token=HF_TOKEN
-            )
-            df = pd.read_excel(local_path)
+    @st.cache_data(show_spinner=False)
+    def load_all_data(valid_files):
+        data = []
+        for filename, file_date in valid_files:
+            try:
+                local_path = hf_hub_download(
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    filename=filename,
+                    token=HF_TOKEN
+                )
+                df = pd.read_excel(local_path)
 
-            if all(col in df.columns for col in ['Kode Saham', 'Penutupan', 'Tanggal Perdagangan Terakhir']):
-                df = df[['Tanggal Perdagangan Terakhir', 'Kode Saham', 'Penutupan']].dropna()
-                df.columns = ['DATE', 'STK_CODE', 'STK_CLOS']
-                df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce', format='%d %B %Y')
-                df = df.dropna(subset=['DATE'])
-                all_data.append(df)
-        except Exception as e:
-            st.warning(f"Skipping {filename}: {e}")
+                if all(col in df.columns for col in ['Kode Saham', 'Penutupan', 'Tanggal Perdagangan Terakhir']):
+                    df = df[['Tanggal Perdagangan Terakhir', 'Kode Saham', 'Penutupan']].dropna()
+                    df.columns = ['DATE', 'STK_CODE', 'STK_CLOS']
+                    df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce', format='%d %B %Y')
+                    df = df.dropna(subset=['DATE'])
+                    data.append(df)
+            except:
+                continue
+        return data
+
+    all_data = load_all_data(valid_files)
 
     if not all_data:
         st.info("No valid data to analyze.")
         st.stop()
 
     combined = pd.concat(all_data)
-    combined['DATE'] = pd.to_datetime(combined['DATE'])
     combined = combined.sort_values('DATE', ascending=False)
 
     stock_list = sorted(combined['STK_CODE'].unique())
