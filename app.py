@@ -57,25 +57,26 @@ if uploaded_files and not st.session_state.just_uploaded:
     st.session_state.just_uploaded = True
     st.rerun()
 
-# === Load files from Hugging Face ===
+# === Load file list from Hugging Face ===
 st.header("📂 Stored DBF Files from Hugging Face")
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 
-# === Extract valid CPyymmdd.dbf files and dates
+# === Extract valid files with CPyymmdd format
 valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
 valid_files = [(f, d) for f, d in valid_files if d]
 unique_dates = sorted({d for _, d in valid_files})
 
-# === Date selection using calendar
+# === Date input via calendar
 selected_date = st.date_input("📅 Select a date to display", value=None)
 
-# === If invalid date selected, stop here
+# === Stop here if selected date is not among uploaded files
 if selected_date and selected_date not in unique_dates:
     st.warning("⚠️ No uploaded file matches the selected date.")
-    st.stop()  # ✅ THIS stops all display below
+    st.session_state.just_uploaded = False
+    st.stop()
 
-# === Display DBF tables matching the selected date
+# === Display DBF tables only for selected date
 displayed = 0
 if not valid_files:
     st.info("No valid CPyymmdd.dbf files found in Hugging Face.")
@@ -114,5 +115,8 @@ else:
             if displayed % 2 == 0:
                 st.markdown("### --- 📎 ---")
 
-# Reset upload flag
+        except Exception as e:
+            st.error(f"❌ Error reading or displaying {filename}: {e}")
+
+# === Reset upload flag after display
 st.session_state.just_uploaded = False
