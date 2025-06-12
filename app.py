@@ -102,7 +102,7 @@ with st.spinner("📦 Mengambil data dari Hugging Face..."):
     data_by_date, filename_by_date = load_existing_files()
 
 if data_by_date:
-    all_dates = sorted(data_by_date.keys())
+    all_dates = sorted(data_by_date.keys(), reverse=True)  # ✅ newest first
     selected_date = st.selectbox("📆 Pilih Tanggal", options=all_dates)
 
     if selected_date:
