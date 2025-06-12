@@ -68,6 +68,30 @@ def load_data_from_hf():
     st.session_state.index_series = pd.Series(index_series).sort_index()
     st.session_state.filename_by_date = filename_by_date
 
+def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
+    num_assets = len(mean_returns)
+
+    def max_return(weights):
+        return -weights @ mean_returns
+
+    def min_volatility(weights):
+        return weights.T @ cov_matrix @ weights
+
+    def neg_sharpe(weights):
+        ret = weights @ mean_returns
+        vol = (weights.T @ cov_matrix @ weights) ** 0.5
+        return -(ret - risk_free_rate) / vol if vol != 0 else float("inf")
+
+    constraints = {"type": "eq", "fun": lambda x: sum(x) - 1}
+    bounds = [(0.0, 0.3)] * num_assets
+    init_guess = [1 / num_assets] * num_assets
+
+    max_ret = minimize(max_return, init_guess, bounds=bounds, constraints=constraints)
+    min_risk = minimize(min_volatility, init_guess, bounds=bounds, constraints=constraints)
+    opt_sharpe = minimize(neg_sharpe, init_guess, bounds=bounds, constraints=constraints)
+
+    return max_ret.x, min_risk.x, opt_sharpe.x
+
 # Tabs
 tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
 
