@@ -225,6 +225,7 @@ beta_df = pd.DataFrame(beta_results).T
 # Add Beta and CAPM to stats_df
 stats_df["Beta"] = beta_df["Beta"]
 stats_df["CAPM Expected Return"] = beta_df["CAPM Expected Return"]
+
             st.dataframe(stats_df.style.format({
                 "Historical Return": "{:.2%}",
                 "Expected Return": "{:.2%}",
