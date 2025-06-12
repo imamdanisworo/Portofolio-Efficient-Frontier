@@ -46,6 +46,16 @@ with tab1:
                 with open(temp_path, "wb") as f:
                     f.write(file.read())
 
+                # Overwrite: delete if filename already exists
+                if file.name in dbf_files:
+                    delete_file(
+                        path_in_repo=file.name,
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        token=HF_TOKEN
+                    )
+                    st.warning(f"⚠️ Overwriting: {file.name}")
+
                 with st.spinner(f"Uploading {file.name} to Hugging Face..."):
                     upload_file(
                         path_or_fileobj=temp_path,
