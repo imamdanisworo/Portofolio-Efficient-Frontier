@@ -25,20 +25,16 @@ def extract_date_from_filename(name):
     return None
 
 def dbf_to_excel(dbf_path, excel_path):
-    try:
-        table = DBF(dbf_path, load=True)
-        df = pd.DataFrame(iter(table))
-        df.columns = df.columns.str.upper().str.strip()
-        df.to_excel(excel_path, index=False)
-        return df
-    except Exception as e:
-        st.error(f"❌ Conversion error: {e}")
-        return pd.DataFrame()
+    table = DBF(dbf_path, load=True)
+    df = pd.DataFrame(iter(table))
+    df.columns = df.columns.str.upper().str.strip()
+    df.to_excel(excel_path, index=False)
+    return df
 
 # === File list ===
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
-valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
+excel_files = sorted([f for f in files if f.lower().endswith(".xlsx")])
+valid_files = [(f, extract_date_from_filename(f)) for f in excel_files]
 valid_files = [(f, d) for f, d in valid_files if d]
 unique_dates = sorted({d for _, d in valid_files})
 
@@ -56,28 +52,34 @@ with tab1:
     if uploaded_files and not st.session_state.just_uploaded:
         for file in uploaded_files:
             try:
-                temp_path = f"/tmp/{file.name}"
-                with open(temp_path, "wb") as f:
+                temp_dbf_path = f"/tmp/{file.name}"
+                with open(temp_dbf_path, "wb") as f:
                     f.write(file.read())
 
-                if file.name in dbf_files:
-                    delete_file(
-                        path_in_repo=file.name,
-                        repo_id=REPO_ID,
-                        repo_type="dataset",
-                        token=HF_TOKEN
-                    )
-                    st.warning(f"⚠️ Overwriting: {file.name}")
+                excel_filename = os.path.splitext(file.name)[0] + ".xlsx"
+                temp_excel_path = f"/tmp/{excel_filename}"
 
-                with st.spinner(f"Uploading {file.name} to Hugging Face..."):
-                    upload_file(
-                        path_or_fileobj=temp_path,
-                        path_in_repo=file.name,
+                df = dbf_to_excel(temp_dbf_path, temp_excel_path)
+
+                if excel_filename in excel_files:
+                    delete_file(
+                        path_in_repo=excel_filename,
                         repo_id=REPO_ID,
                         repo_type="dataset",
                         token=HF_TOKEN
                     )
-                    st.success(f"✅ Uploaded: {file.name}")
+                    st.warning(f"⚠️ Overwriting: {excel_filename}")
+
+                with st.spinner(f"Uploading {excel_filename} to Hugging Face..."):
+                    upload_file(
+                        path_or_fileobj=temp_excel_path,
+                        path_in_repo=excel_filename,
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        token=HF_TOKEN
+                    )
+                    st.success(f"✅ Uploaded: {excel_filename}")
+
             except Exception as e:
                 st.error(f"❌ Failed to upload {file.name}: {e}")
 
@@ -86,7 +88,7 @@ with tab1:
         st.rerun()
 
     if not unique_dates:
-        st.info("No valid DBF files uploaded yet.")
+        st.info("No valid Excel files uploaded yet.")
         st.stop()
 
     st.header("📅 Select Date to View")
@@ -107,23 +109,21 @@ with tab1:
                 filename=filename,
                 token=HF_TOKEN
             )
-            excel_path = local_path.replace(".dbf", ".xlsx")
-            df = dbf_to_excel(local_path, excel_path)
+            df = pd.read_excel(local_path)
 
-            if not df.empty:
-                st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
-                st.dataframe(df)
+            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
+            st.dataframe(df)
 
-                if st.button(f"🗑️ Delete {filename}", key=filename):
-                    delete_file(
-                        path_in_repo=filename,
-                        repo_id=REPO_ID,
-                        repo_type="dataset",
-                        token=HF_TOKEN
-                    )
-                    st.success(f"🗑️ Deleted: {filename}")
-                    time.sleep(2)
-                    st.rerun()
+            if st.button(f"🗑️ Delete {filename}", key=filename):
+                delete_file(
+                    path_in_repo=filename,
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    token=HF_TOKEN
+                )
+                st.success(f"🗑️ Deleted: {filename}")
+                time.sleep(2)
+                st.rerun()
 
         except Exception as e:
             st.error(f"❌ Error reading {filename}: {e}")
@@ -143,8 +143,7 @@ with tab2:
                 filename=filename,
                 token=HF_TOKEN
             )
-            excel_path = local_path.replace(".dbf", ".xlsx")
-            df = dbf_to_excel(local_path, excel_path)
+            df = pd.read_excel(local_path)
 
             if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
                 df['DATE'] = pd.to_datetime(file_date)
