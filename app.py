@@ -181,16 +181,16 @@ with tab2:
             df_pivot = df_pivot.sort_index()
             df_returns = df_pivot.pct_change().dropna()
 
-            num_assets = len(selected_stocks)
-            weights = [1 / num_assets] * num_assets
+            # Aligned weights with stock names
+            weights = pd.Series([1 / len(selected_stocks)] * len(selected_stocks), index=selected_stocks)
 
             mean_returns = df_returns.mean()
             cov_matrix = df_returns.cov()
 
-            port_return_daily = sum(mean_returns * weights)
+            port_return_daily = (mean_returns @ weights)
             port_return_annual = port_return_daily * 252
 
-            port_volatility_daily = (pd.Series(weights).T @ cov_matrix @ pd.Series(weights)) ** 0.5
+            port_volatility_daily = (weights.T @ cov_matrix @ weights) ** 0.5
             port_volatility_annual = port_volatility_daily * (252 ** 0.5)
 
             sharpe_ratio = (port_return_annual - risk_free_rate) / port_volatility_annual if port_volatility_annual > 0 else 0
