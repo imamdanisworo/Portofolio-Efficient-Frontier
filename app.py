@@ -16,6 +16,43 @@ api = HfApi()
 
 st.markdown("<h1 style='text-align:center;'>📈 Ringkasan Saham</h1>", unsafe_allow_html=True)
 
+# === Tooltip with Explanation ===
+with st.expander("ℹ️ Penjelasan Rumus (hover untuk lihat)"):
+    st.markdown("""
+    **📈 Expected Return untuk saham *i***
+    
+    \[
+    \text{Expected Return}_i = \bar{r}_i \times T
+    \]
+
+    **📉 Risiko (Volatilitas) saham *i***
+    
+    \[
+    \text{Volatility}_i = \sigma_i \times \sqrt{T}
+    \]
+
+    **📊 Rasio Sharpe saham *i***
+    
+    \[
+    \text{Sharpe Ratio}_i = \frac{\text{Expected Return}_i - R_f}{\text{Volatility}_i}
+    \]
+
+    **🔗 Korelasi antara saham *i* dan *j***
+    
+    \[
+    \text{Corr}(i, j) = \frac{\text{Cov}(r_i, r_j)}{\sigma_i \cdot \sigma_j}
+    \]
+
+    **📊 Portofolio (berat = w)**
+
+    - Return portofolio:
+      \[ \mu_p = \mathbf{w}^\top \mu \]
+    - Risiko portofolio:
+      \[ \sigma_p = \sqrt{\mathbf{w}^\top \Sigma \mathbf{w}} \]
+    - Sharpe portofolio:
+      \[ S_p = \frac{\mu_p - R_f}{\sigma_p} \]
+    """, unsafe_allow_html=True)
+
 # === Helper Functions ===
 def get_date_from_filename(name):
     try:
@@ -40,6 +77,7 @@ def load_excel_from_hf(filename):
         st.warning(f"⚠️ Gagal memuat: {filename} - {e}")
         return None
 
+# === Load All Data ===
 def load_data_from_hf():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
@@ -66,6 +104,7 @@ def load_data_from_hf():
     st.session_state.data_by_date = data_by_date
     st.session_state.filename_by_date = filename_by_date
 
+# === Portfolio Optimization ===
 def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
     num_assets = len(mean_returns)
 
@@ -90,10 +129,10 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
 
     return max_ret.x, min_risk.x, opt_sharpe.x
 
-# === TABS ===
+# === Tabs ===
 tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
 
-# === TAB 1 ===
+# === Tab 1 ===
 with tab1:
     uploaded_files = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
     if uploaded_files:
@@ -137,7 +176,7 @@ with tab1:
             st.cache_resource.clear()
             st.rerun()
 
-# === TAB 2 ===
+# === Tab 2 ===
 with tab2:
     st.markdown("### 📊 Optimasi Portofolio Saham")
     data_by_date = st.session_state.get("data_by_date", {})
