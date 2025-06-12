@@ -2,4 +2,5 @@ streamlit
 pandas
 openpyxl
 scipy
+arch
 huggingface_hub
