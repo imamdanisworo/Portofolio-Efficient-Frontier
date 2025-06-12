@@ -35,8 +35,7 @@ def load_data_from_hf():
                 filename=file,
                 repo_type="dataset",
                 token=HF_TOKEN,
-                local_dir="/tmp",
-                local_dir_use_symlinks=False
+                cache_dir="/tmp/huggingface"  # ✅ Fast local cache
             )
             df = pd.read_excel(local_path)
             date = get_date_from_filename(file)
@@ -48,7 +47,6 @@ def load_data_from_hf():
         except Exception as e:
             st.warning(f"Gagal memuat: {file} - {e}")
 
-    # Cache in session
     st.session_state.data_by_date = data_by_date
     st.session_state.filename_by_date = filename_by_date
 
