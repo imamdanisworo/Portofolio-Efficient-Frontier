@@ -21,6 +21,7 @@ def get_date_from_filename(name):
     except Exception:
         return None
 
+# === Improved Data Loader with Visual Progress ===
 def load_data_from_hf():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
@@ -28,14 +29,19 @@ def load_data_from_hf():
     data_by_date = {}
     filename_by_date = {}
 
-    for file in xlsx_files:
+    total = len(xlsx_files)
+    progress_bar = st.progress(0)
+    status = st.empty()
+
+    for i, file in enumerate(xlsx_files):
         try:
+            status.text(f"📥 Memuat: {file}")
             local_path = hf_hub_download(
                 repo_id=REPO_ID,
                 filename=file,
                 repo_type="dataset",
                 token=HF_TOKEN,
-                cache_dir="/tmp/huggingface"  # ✅ Fast local cache
+                cache_dir="/tmp/huggingface"
             )
             df = pd.read_excel(local_path)
             date = get_date_from_filename(file)
@@ -46,7 +52,9 @@ def load_data_from_hf():
                 filename_by_date[date] = file
         except Exception as e:
             st.warning(f"Gagal memuat: {file} - {e}")
+        progress_bar.progress((i + 1) / total)
 
+    status.text("✅ Semua file berhasil dimuat.")
     st.session_state.data_by_date = data_by_date
     st.session_state.filename_by_date = filename_by_date
 
@@ -84,11 +92,6 @@ if uploaded_files:
         st.session_state.pop("data_by_date", None)
         st.rerun()
 
-# === Refresh Button ===
-if st.button("🔁 Muat Ulang Manual"):
-    st.session_state.pop("data_by_date", None)
-    st.rerun()
-
 # === Bulk Delete Section ===
 st.markdown("### ⚠️ Hapus Semua Data")
 
@@ -110,7 +113,7 @@ if st.button("🧹 Hapus SELURUH File Excel dari Dataset"):
     except Exception as e:
         st.error(f"❌ Gagal menghapus semua file: {e}")
 
-# === Load Data ===
+# === Load Data on App Start or Refresh
 if "data_by_date" not in st.session_state:
     with st.spinner("📦 Mengambil data dari Hugging Face..."):
         load_data_from_hf()
