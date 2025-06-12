@@ -11,9 +11,10 @@ REPO_ID = "imamdanisworo/dbf-storage"
 HF_TOKEN = st.secrets["HF_TOKEN"]
 api = HfApi()
 
-st.set_page_config(page_title="📁 DBF Stock Manager", layout="wide")
-st.title("📁 DBF Stock Manager (Hugging Face)")
+st.set_page_config(page_title="\ud83d\udcc1 DBF Stock Manager", layout="wide")
+st.title("\ud83d\udcc1 DBF Stock Manager (Hugging Face)")
 
+# === Helper ===
 def extract_date_from_filename(name):
     try:
         base = os.path.splitext(name)[0]
@@ -23,20 +24,30 @@ def extract_date_from_filename(name):
         pass
     return None
 
+def clean_stk_clos(value):
+    try:
+        if isinstance(value, bytes):
+            value = value.decode('utf-8', errors='ignore').replace('\x00', '').strip()
+        return float(value)
+    except:
+        return None
+
+# === File list ===
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
 valid_files = [(f, d) for f, d in valid_files if d]
 unique_dates = sorted({d for _, d in valid_files})
 
-tab1, tab2 = st.tabs(["📂 Upload & View", "📈 Analyze Stocks"])
+# === Tabs ===
+tab1, tab2 = st.tabs(["\ud83d\udcc2 Upload & View", "\ud83d\udcc8 Analyze Stocks"])
 
 if 'just_uploaded' not in st.session_state:
     st.session_state.just_uploaded = False
 
 # === TAB 1 ===
 with tab1:
-    st.header("⬆️ Upload DBF Files")
+    st.header("\u2b06\ufe0f Upload DBF Files")
     uploaded_files = st.file_uploader("Upload DBF files", type="dbf", accept_multiple_files=True)
 
     if uploaded_files and not st.session_state.just_uploaded:
@@ -46,7 +57,6 @@ with tab1:
                 with open(temp_path, "wb") as f:
                     f.write(file.read())
 
-                # Overwrite: delete if filename already exists
                 if file.name in dbf_files:
                     delete_file(
                         path_in_repo=file.name,
@@ -54,7 +64,7 @@ with tab1:
                         repo_type="dataset",
                         token=HF_TOKEN
                     )
-                    st.warning(f"⚠️ Overwriting: {file.name}")
+                    st.warning(f"\u26a0\ufe0f Overwriting: {file.name}")
 
                 with st.spinner(f"Uploading {file.name} to Hugging Face..."):
                     upload_file(
@@ -64,9 +74,9 @@ with tab1:
                         repo_type="dataset",
                         token=HF_TOKEN
                     )
-                    st.success(f"✅ Uploaded: {file.name}")
+                    st.success(f"\u2705 Uploaded: {file.name}")
             except Exception as e:
-                st.error(f"❌ Failed to upload {file.name}: {e}")
+                st.error(f"\u274c Failed to upload {file.name}: {e}")
 
         time.sleep(5)
         st.session_state.just_uploaded = True
@@ -76,7 +86,7 @@ with tab1:
         st.info("No valid DBF files uploaded yet.")
         st.stop()
 
-    st.header("📅 Select Date to View")
+    st.header("\ud83d\uddd3\ufe0f Select Date to View")
     selected_date = st.selectbox(
         "Choose a date (from uploaded files)", 
         options=unique_dates,
@@ -97,29 +107,31 @@ with tab1:
             table = DBF(local_path, load=True)
             df = pd.DataFrame(iter(table))
             df.columns = df.columns.str.upper().str.strip()
+            if 'STK_CLOS' in df.columns:
+                df['STK_CLOS'] = df['STK_CLOS'].apply(clean_stk_clos)
 
-            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
+            st.subheader(f"\ud83d\udcc4 {filename} — {file_date.strftime('%d %b %Y')}")
             st.dataframe(df)
 
-            if st.button(f"🗑️ Delete {filename}", key=filename):
+            if st.button(f"\ud83d\uddd1\ufe0f Delete {filename}", key=filename):
                 delete_file(
                     path_in_repo=filename,
                     repo_id=REPO_ID,
                     repo_type="dataset",
                     token=HF_TOKEN
                 )
-                st.success(f"🗑️ Deleted: {filename}")
+                st.success(f"\ud83d\uddd1\ufe0f Deleted: {filename}")
                 time.sleep(2)
                 st.rerun()
 
         except Exception as e:
-            st.error(f"❌ Error reading {filename}: {e}")
+            st.error(f"\u274c Error reading {filename}: {e}")
 
     st.session_state.just_uploaded = False
 
 # === TAB 2 ===
 with tab2:
-    st.header("📈 Analyze Stock Risk, Return, and Correlation")
+    st.header("\ud83d\udcc8 Analyze Stock Risk, Return, and Correlation")
 
     all_data = []
     for filename, file_date in valid_files:
@@ -135,6 +147,7 @@ with tab2:
             df.columns = df.columns.str.upper().str.strip()
 
             if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
+                df['STK_CLOS'] = df['STK_CLOS'].apply(clean_stk_clos)
                 df['DATE'] = pd.to_datetime(file_date)
                 df = df[['DATE', 'STK_CODE', 'STK_CLOS']].dropna()
                 all_data.append(df)
@@ -164,13 +177,13 @@ with tab2:
         risk = returns.std()
         correlation = returns.corr()
 
-        st.subheader("📈 Expected Return (Mean Daily %)")
+        st.subheader("\ud83d\udcc8 Expected Return (Mean Daily %)")
         st.dataframe((mean_returns * 100).round(3).rename("Return (%)"))
 
-        st.subheader("📉 Risk (Daily Std Deviation %)")
+        st.subheader("\ud83d\udcc9 Risk (Daily Std Deviation %)")
         st.dataframe((risk * 100).round(3).rename("Risk (%)"))
 
-        st.subheader("🔗 Correlation Matrix")
+        st.subheader("\ud83d\udd17 Correlation Matrix")
         st.dataframe(correlation.round(3))
     else:
         st.info("Select one or more stock codes to begin analysis.")
