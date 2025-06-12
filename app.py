@@ -68,7 +68,6 @@ def load_data_from_hf():
     st.session_state.index_series = pd.Series(index_series).sort_index()
     st.session_state.filename_by_date = filename_by_date
 
-
 def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
     num_assets = len(mean_returns)
 
@@ -95,64 +94,6 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
 
 # Tabs
 tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
-
-# Tab 1: Manajemen Data
-with tab1:
-    if "data_by_date" not in st.session_state or "index_series" not in st.session_state:
-        with st.spinner("📦 Mengambil data dari Hugging Face..."):
-            load_data_from_hf()
-
-    data_by_date = st.session_state.get("data_by_date", {})
-    filename_by_date = st.session_state.get("filename_by_date", {})
-    index_series = st.session_state.get("index_series", pd.Series(dtype=float))
-
-    uploaded_files = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
-    if uploaded_files:
-        for file in uploaded_files:
-            try:
-                if "indeks" in file.name.lower():
-                    upload_file(path_or_fileobj=file, path_in_repo=f"index-{file.name}", repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-                    st.success(f"✅ Uploaded Indeks: {file.name}")
-                else:
-                    upload_file(path_or_fileobj=file, path_in_repo=file.name, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-                    st.success(f"✅ Uploaded Saham: {file.name}")
-            except Exception as e:
-                st.error(f"❌ Failed: {file.name} - {e}")
-        st.cache_resource.clear()
-        st.rerun()
-
-    if st.button("🧹 Hapus Semua Data"):
-        try:
-            all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-            for file in all_files:
-                if file.lower().endswith(".xlsx"):
-                    delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
-            st.success("✅ Semua file berhasil dihapus.")
-            st.cache_resource.clear()
-            st.rerun()
-        except Exception as e:
-            st.error(str(e))
-
-    st.markdown(f"📄 **Jumlah File Saham:** {len(data_by_date)}")
-    st.markdown(f"📄 **Jumlah File Indeks:** {len(index_series)}")
-
-    if data_by_date:
-        selected_date = st.selectbox("📆 Pilih Tanggal", sorted(data_by_date.keys(), reverse=True))
-        df_show = data_by_date[selected_date].copy()
-        df_show['Penutupan'] = df_show['Penutupan'].apply(lambda x: f"{x:,.0f}")
-
-        if selected_date in index_series:
-            st.markdown("#### 📊 Ringkasan Indeks (Composite)")
-            st.dataframe(pd.DataFrame({"Composite": [index_series[selected_date]]}), use_container_width=True)
-
-        st.markdown("#### 📋 Data Saham")
-        st.dataframe(df_show, use_container_width=True)
-
-        if st.button("🗑️ Hapus Data Ini"):
-            delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
-            st.success("✅ Dihapus.")
-            st.cache_resource.clear()
-            st.rerun()
 
 # Tab 2: Analisis Saham
 with tab2:
@@ -186,7 +127,7 @@ with tab2:
             df_returns = np.log(df_pivot.sort_index() / df_pivot.sort_index().shift(1)).dropna()
 
             index_filtered = index_series[index_series.index.isin(df_returns.index)]
-            market_returns = index_filtered.pct_change().dropna()
+            market_returns = np.log(index_filtered / index_filtered.shift(1)).dropna()
             df_returns = df_returns.loc[market_returns.index]
 
             historical_returns = df_pivot.sort_index().iloc[-1] / df_pivot.sort_index().iloc[0] - 1
@@ -235,17 +176,12 @@ with tab2:
                 "Avg Correlation": "{:.2f}"
             }), use_container_width=True)
 
-            
-
             capm_returns = beta_df["CAPM Expected Return"]
-
-            # Adjust expected returns using beta and average correlation (risk adjusted CAPM)
             combined_df = stats_df.copy()
-            correlation_df = df_returns.corr()
             adjusted_returns = []
             for stock in combined_df.index:
                 beta = combined_df.loc[stock, "Beta"]
-                corr = combined_df.loc[stock, "Avg Correlation"] if "Avg Correlation" in combined_df.columns else 1
+                corr = combined_df.loc[stock, "Avg Correlation"]
                 capm = combined_df.loc[stock, "CAPM Expected Return"]
                 adjusted_return = capm / (1 + beta * corr) if beta is not None and corr is not None else 0
                 adjusted_returns.append(adjusted_return)
@@ -265,3 +201,13 @@ with tab2:
 
             st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode CAPM, Beta & Korelasi)")
             st.dataframe(alloc_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
+
+            # Display portfolio metrics
+            port_ret = np.dot(w_opt, adj_return_series)
+            port_vol = np.sqrt(np.dot(w_opt.T, np.dot(cov_matrix, w_opt)))
+            port_sharpe = (port_ret - risk_free_rate) / port_vol if port_vol != 0 else 0
+
+            st.markdown("#### 📌 Statistik Portofolio Optimal")
+            st.metric("Expected Return", f"{port_ret:.2%}")
+            st.metric("Volatility (Risk)", f"{port_vol:.2%}")
+            st.metric("Sharpe Ratio", f"{port_sharpe:.2f}")
