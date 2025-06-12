@@ -164,13 +164,13 @@ with tab2:
     if not data_by_date:
         st.info("Belum ada data untuk dianalisis.")
     else:
-        # Gabungkan dan sort
         df_all = pd.concat(data_by_date.values(), ignore_index=True)
         df_all = df_all.sort_values(by="Tanggal", ascending=False)
 
         unique_stocks = sorted(df_all['Kode Saham'].unique())
         selected_stocks = st.multiselect("Pilih Kode Saham", options=unique_stocks)
         period = st.selectbox("Pilih Periode (hari)", options=[20, 50, 100, 200, 500])
+        risk_free_rate = st.number_input("Masukkan Risk-Free Rate (per tahun, %)", value=0.0) / 100
 
         if selected_stocks:
             df_filtered = df_all[df_all['Kode Saham'].isin(selected_stocks)]
@@ -181,21 +181,26 @@ with tab2:
             df_pivot = df_pivot.sort_index()
             df_returns = df_pivot.pct_change().dropna()
 
-            st.markdown("#### 🔁 Return Harian")
-            st.dataframe(df_returns.style.format("{:.2%}"), use_container_width=True)
+            num_assets = len(selected_stocks)
+            weights = [1 / num_assets] * num_assets
 
-            expected_return = df_returns.mean()
-            risk = df_returns.std()
-            correlation = df_returns.corr()
+            mean_returns = df_returns.mean()
+            cov_matrix = df_returns.cov()
 
-            st.markdown("#### 📈 Expected Return & Risiko")
-            stats_df = pd.DataFrame({
-                "Expected Return": expected_return,
-                "Volatility (Risk)": risk
-            }).T
-            st.dataframe(stats_df.style.format("{:.2%}"), use_container_width=True)
+            port_return_daily = sum(mean_returns * weights)
+            port_return_annual = port_return_daily * 252
 
-            st.markdown("#### 🔗 Korelasi Antar Saham")
-            st.dataframe(correlation.style.format("{:.2f}"), use_container_width=True)
+            port_volatility_daily = (pd.Series(weights).T @ cov_matrix @ pd.Series(weights)) ** 0.5
+            port_volatility_annual = port_volatility_daily * (252 ** 0.5)
+
+            sharpe_ratio = (port_return_annual - risk_free_rate) / port_volatility_annual if port_volatility_annual > 0 else 0
+
+            st.markdown("#### 📈 Hasil Analisis Portofolio (Tahunan)")
+            result_df = pd.DataFrame({
+                "Expected Return": [f"{port_return_annual:.2%}"],
+                "Volatility (Risk)": [f"{port_volatility_annual:.2%}"],
+                "Sharpe Ratio": [f"{sharpe_ratio:.2f}"]
+            })
+            st.dataframe(result_df, use_container_width=True)
         else:
             st.info("Silakan pilih minimal satu kode saham.")
