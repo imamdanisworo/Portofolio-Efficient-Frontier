@@ -125,9 +125,17 @@ with tab2:
                 )
                 df = pd.read_excel(local_path)
 
-                if all(col in df.columns for col in ['Kode Saham', 'Penutupan', 'Tanggal Perdagangan Terakhir']):
-                    df = df[['Tanggal Perdagangan Terakhir', 'Kode Saham', 'Penutupan']].dropna()
-                    df.columns = ['DATE', 'STK_CODE', 'STK_CLOS']
+                # Normalize column names
+                df.columns = df.columns.str.strip().str.lower()
+                rename_map = {
+                    'tanggal perdagangan terakhir': 'DATE',
+                    'kode saham': 'STK_CODE',
+                    'penutupan': 'STK_CLOS'
+                }
+
+                if all(col in df.columns for col in rename_map):
+                    df = df[list(rename_map)].rename(columns=rename_map)
+                    df = df.dropna()
                     df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce', format='%d %B %Y')
                     df = df.dropna(subset=['DATE'])
                     if not df.empty:
