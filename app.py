@@ -37,16 +37,8 @@ if uploaded_files:
             with open(temp_path, "wb") as f:
                 f.write(file.read())
 
-            # 📄 Display parsed content immediately
-            table = DBF(temp_path, load=True)
-            df = pd.DataFrame(iter(table))
-            df.columns = df.columns.str.upper().str.strip()
-
-            st.subheader(f"📄 {file.name} (Preview Before Upload)")
-            st.dataframe(df)
-
-            # ☁️ Upload to Hugging Face
-            with st.spinner(f"Now uploading {file.name} to Hugging Face..."):
+            # ☁️ Upload to Hugging Face (without showing file preview)
+            with st.spinner(f"Uploading {file.name} to Hugging Face..."):
                 upload_file(
                     path_or_fileobj=temp_path,
                     path_in_repo=file.name,
@@ -54,13 +46,12 @@ if uploaded_files:
                     repo_type="dataset",
                     token=HF_TOKEN
                 )
-                st.success(f"✅ Uploaded to Hugging Face: {file.name}")
-
+                st.success(f"✅ Uploaded: {file.name}")
         except Exception as e:
-            st.error(f"❌ Failed to process {file.name}: {e}")
+            st.error(f"❌ Failed to upload {file.name}: {e}")
 
-    # 👇 Let user trigger refresh manually
-    st.warning("Upload complete. Click '🔄 Refresh from Hugging Face' to load new files.")
+    # 🔄 Show refresh suggestion after upload
+    st.warning("Upload complete. Click '🔄 Refresh from Hugging Face' to load and view your files.")
     st.stop()
 
 # === Manual Refresh Button ===
