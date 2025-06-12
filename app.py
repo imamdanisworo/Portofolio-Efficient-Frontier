@@ -10,7 +10,6 @@ HF_TOKEN = st.secrets["HF_TOKEN"]
 api = HfApi()
 
 st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
-
 st.markdown("<h1 style='text-align:center;'>📈 Ringkasan Saham</h1>", unsafe_allow_html=True)
 
 # === Helper ===
@@ -69,7 +68,6 @@ tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
 # === TAB 1 ===
 with tab1:
     st.markdown("### 📤 Upload File Excel")
-
     uploaded_files = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
 
     if uploaded_files:
@@ -100,7 +98,6 @@ with tab1:
             st.rerun()
 
     st.markdown("### 🗑️ Hapus Semua Data Excel")
-
     if st.button("❌ Hapus SEMUA File Excel dari Dataset"):
         try:
             all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
@@ -119,7 +116,6 @@ with tab1:
         except Exception as e:
             st.error(f"⚠️ Gagal menghapus semua file: {e}")
 
-    # Load Data
     if "data_by_date" not in st.session_state:
         with st.spinner("📦 Mengambil data dari Hugging Face..."):
             load_data_from_hf()
@@ -128,7 +124,6 @@ with tab1:
     filename_by_date = st.session_state.get("filename_by_date", {})
 
     st.markdown(f"### 📂 Jumlah File Tersimpan: **{len(filename_by_date)}**")
-
     st.markdown("### 📅 Pilih Tanggal untuk Melihat Data")
     if data_by_date:
         sorted_dates = sorted(data_by_date.keys(), reverse=True)
@@ -159,7 +154,6 @@ with tab1:
 # === TAB 2 ===
 with tab2:
     st.markdown("### 📊 Analisis Portofolio Saham")
-
     data_by_date = st.session_state.get("data_by_date", {})
     if not data_by_date:
         st.info("Belum ada data untuk dianalisis.")
@@ -173,34 +167,38 @@ with tab2:
         risk_free_rate = st.number_input("Masukkan Risk-Free Rate (per tahun, %)", value=0.0) / 100
 
         if selected_stocks:
-            df_filtered = df_all[df_all['Kode Saham'].isin(selected_stocks)]
-            recent_dates = sorted(df_filtered['Tanggal'].unique(), reverse=True)[:period]
-            df_recent = df_filtered[df_filtered['Tanggal'].isin(recent_dates)]
+            if st.button("🔍 Analisis"):
+                df_filtered = df_all[df_all['Kode Saham'].isin(selected_stocks)]
+                recent_dates = sorted(df_filtered['Tanggal'].unique(), reverse=True)[:period]
+                df_recent = df_filtered[df_filtered['Tanggal'].isin(recent_dates)]
 
-            df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
-            df_pivot = df_pivot.sort_index()
-            df_returns = df_pivot.pct_change().dropna()
+                df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
+                df_pivot = df_pivot.sort_index()
+                df_returns = df_pivot.pct_change().dropna()
 
-            # Aligned weights with stock names
-            weights = pd.Series([1 / len(selected_stocks)] * len(selected_stocks), index=selected_stocks)
+                # === Per-Stock Return & Volatility
+                per_stock_stats = pd.DataFrame({
+                    "Expected Return": df_returns.mean() * 252,
+                    "Volatility (Risk)": df_returns.std() * (252 ** 0.5)
+                })
+                st.markdown("#### 📊 Statistik per Saham (Tahunan)")
+                st.dataframe(per_stock_stats.style.format("{:.2%}"), use_container_width=True)
 
-            mean_returns = df_returns.mean()
-            cov_matrix = df_returns.cov()
+                # === Portfolio Metrics
+                weights = pd.Series([1 / len(selected_stocks)] * len(selected_stocks), index=selected_stocks)
+                mean_returns = df_returns.mean()
+                cov_matrix = df_returns.cov()
 
-            port_return_daily = (mean_returns @ weights)
-            port_return_annual = port_return_daily * 252
+                port_return_annual = (mean_returns @ weights) * 252
+                port_volatility_annual = (weights.T @ cov_matrix @ weights) ** 0.5 * (252 ** 0.5)
+                sharpe_ratio = (port_return_annual - risk_free_rate) / port_volatility_annual if port_volatility_annual > 0 else 0
 
-            port_volatility_daily = (weights.T @ cov_matrix @ weights) ** 0.5
-            port_volatility_annual = port_volatility_daily * (252 ** 0.5)
-
-            sharpe_ratio = (port_return_annual - risk_free_rate) / port_volatility_annual if port_volatility_annual > 0 else 0
-
-            st.markdown("#### 📈 Hasil Analisis Portofolio (Tahunan)")
-            result_df = pd.DataFrame({
-                "Expected Return": [f"{port_return_annual:.2%}"],
-                "Volatility (Risk)": [f"{port_volatility_annual:.2%}"],
-                "Sharpe Ratio": [f"{sharpe_ratio:.2f}"]
-            })
-            st.dataframe(result_df, use_container_width=True)
+                st.markdown("#### 📈 Portofolio Gabungan")
+                port_summary = pd.DataFrame({
+                    "Expected Return": [f"{port_return_annual:.2%}"],
+                    "Volatility (Risk)": [f"{port_volatility_annual:.2%}"],
+                    "Sharpe Ratio": [f"{sharpe_ratio:.2f}"]
+                })
+                st.dataframe(port_summary, use_container_width=True)
         else:
             st.info("Silakan pilih minimal satu kode saham.")
