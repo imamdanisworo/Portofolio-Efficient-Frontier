@@ -13,6 +13,16 @@ api = HfApi()
 st.set_page_config(page_title="DBF Viewer & Manager", layout="wide")
 st.title("📁 View, Upload & Manage DBF Files (Hugging Face)")
 
+# === Helper: Extract date from filename like CPyymmdd.dbf ===
+def extract_date_from_filename(name):
+    try:
+        base = os.path.splitext(name)[0]
+        if base.startswith("CP") and len(base) >= 8:
+            return datetime.strptime(base[2:], "%y%m%d").date()
+    except:
+        pass
+    return None
+
 # === File Upload ===
 uploaded_files = st.file_uploader("⬆️ Upload new DBF files", type="dbf", accept_multiple_files=True)
 
@@ -23,8 +33,16 @@ if uploaded_files:
             with open(temp_path, "wb") as f:
                 f.write(file.read())
 
-            # Upload to HF
-            with st.spinner(f"Uploading {file.name}..."):
+            # 📄 Parse and display immediately before uploading
+            table = DBF(temp_path, load=True)
+            df = pd.DataFrame(iter(table))
+            df.columns = df.columns.str.upper().str.strip()
+
+            st.subheader(f"📄 {file.name} (Preview Before Upload)")
+            st.dataframe(df)
+
+            # ☁️ Upload to Hugging Face
+            with st.spinner(f"Now uploading {file.name} to Hugging Face..."):
                 upload_file(
                     path_or_fileobj=temp_path,
                     path_in_repo=file.name,
@@ -32,20 +50,14 @@ if uploaded_files:
                     repo_type="dataset",
                     token=HF_TOKEN
                 )
-                st.success(f"✅ Uploaded: {file.name}")
-            st.rerun()
-        except Exception as e:
-            st.error(f"❌ Upload failed: {e}")
+                st.success(f"✅ Uploaded to Hugging Face: {file.name}")
 
-# === Helper to extract date from filename ===
-def extract_date_from_filename(name):
-    try:
-        base = os.path.splitext(name)[0]
-        if base.startswith("CP") and len(base) >= 8:
-            return datetime.strptime(base[2:], "%y%m%d").date()
-    except:
-        pass
-    return None
+            # 🔄 Rerun to load from HF next time
+            st.info("Refreshing to sync with Hugging Face storage...")
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"❌ Failed to process {file.name}: {e}")
 
 # === Load .dbf files from HF ===
 st.header("📂 Stored DBF Files from Hugging Face")
@@ -56,7 +68,7 @@ dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
 valid_files = [(f, d) for f, d in valid_files if d]  # only keep files with valid dates
 
-# === Date filter dropdown ===
+# === Date Filter Dropdown ===
 selected_date = None
 if valid_files:
     st.subheader("📅 Filter by Uploaded File Date")
@@ -67,7 +79,7 @@ if valid_files:
         format_func=lambda d: d.strftime('%d %b %Y')
     )
 
-# === Display DBF content ===
+# === Display DBF content with separators ===
 displayed = 0
 if not valid_files:
     st.info("No valid CPyymmdd.dbf files found in your Hugging Face Dataset.")
@@ -103,7 +115,7 @@ else:
 
             displayed += 1
             if displayed % 2 == 0:
-                st.markdown("### --- 📎 ---")
+                st.markdown("### --- 📎 ---")  # visual separator
 
         except Exception as e:
             st.error(f"Error reading {filename}: {e}")
