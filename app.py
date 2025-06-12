@@ -191,12 +191,15 @@ with tab2:
             df_returns = df_returns.loc[market_returns.index]
 
             historical_returns = df_pivot.sort_index().iloc[-1] / df_pivot.sort_index().iloc[0] - 1
-            mean_returns = df_returns.mean() * period
-            cov_matrix = df_returns.cov() * period
-            volatility = df_returns.std() * (period ** 0.5)
+
+            # ✅ Correct: Do NOT scale by period since we already sliced the N days
+            mean_returns = df_returns.mean()
+            cov_matrix = df_returns.cov()
+            volatility = df_returns.std()
             avg_corr = df_returns.corr().mean()
             sharpe_ratio = (mean_returns - risk_free_rate) / volatility
 
+            # CAPM calculations
             periods_per_year = 252
             daily_rf = (1 + risk_free_rate) ** (1 / periods_per_year) - 1
             excess_market = market_returns - daily_rf
@@ -210,7 +213,7 @@ with tab2:
                 expected_return = daily_rf + beta * excess_market.mean()
                 beta_results[stock] = {
                     "Beta": beta,
-                    "CAPM Expected Return": expected_return * period
+                    "CAPM Expected Return": expected_return  # ✅ Do NOT multiply by period
                 }
 
             beta_df = pd.DataFrame(beta_results).T
@@ -235,6 +238,7 @@ with tab2:
                 "Avg Correlation": "{:.2f}"
             }), use_container_width=True)
 
+            # Adjust expected return using CAPM and correlation
             capm_returns = beta_df["CAPM Expected Return"]
             combined_df = stats_df.copy()
             adjusted_returns = []
@@ -246,7 +250,18 @@ with tab2:
                 adjusted_returns.append(adjusted_return)
             adj_return_series = pd.Series(adjusted_returns, index=combined_df.index)
 
+            # Optimize portfolio
             w_max, w_min, w_opt = optimize_portfolio(adj_return_series.values, cov_matrix.values, risk_free_rate)
+
+            # ✅ Normalize weights to sum exactly 100%
+            def normalize_weights(weights):
+                weights = np.maximum(weights, 0)  # eliminate small negatives
+                normalized = weights / weights.sum()
+                return np.round(normalized, 6)  # ensure precision
+
+            w_max = normalize_weights(w_max)
+            w_min = normalize_weights(w_min)
+            w_opt = normalize_weights(w_opt)
 
             alloc_df = pd.DataFrame({
                 "Saham": combined_df.index,
@@ -255,6 +270,7 @@ with tab2:
                 "⚖️ Optimum Return": w_opt
             }).set_index("Saham")
 
+            # ✅ Ensure total = 100% by rounding + adding sum row
             sum_row = pd.DataFrame(alloc_df.sum()).T
             sum_row.index = ["TOTAL"]
             alloc_df = pd.concat([alloc_df, sum_row])
@@ -262,6 +278,7 @@ with tab2:
             st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode CAPM, Beta & Korelasi)")
             st.dataframe(alloc_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
 
+            # Portfolio stats
             port_ret = np.dot(w_opt, adj_return_series.values)
             port_vol = np.sqrt(np.dot(w_opt.T, np.dot(cov_matrix.values, w_opt)))
             port_sharpe = (port_ret - risk_free_rate) / port_vol if port_vol != 0 else 0
