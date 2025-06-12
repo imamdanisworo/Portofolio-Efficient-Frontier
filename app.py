@@ -163,8 +163,10 @@ with tab2:
             df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
             df_returns = df_pivot.sort_index().pct_change().dropna()
 
-            historical_returns = df_returns.mean()
-            mean_returns = historical_returns * period
+            # New Historical Return: (latest / earliest) - 1
+            historical_returns = df_pivot.sort_index().iloc[-1] / df_pivot.sort_index().iloc[0] - 1
+
+            mean_returns = df_returns.mean() * period
             cov_matrix = df_returns.cov() * period
             volatility = df_returns.std() * (period ** 0.5)
             sharpe_ratio = (mean_returns - risk_free_rate) / volatility
