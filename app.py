@@ -46,7 +46,7 @@ def load_data_from_hf():
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
 
     stock_by_date = {}
-    index_by_date = {}
+    index_series = {}
     filename_by_date = {}
 
     progress_bar = st.progress(0)
@@ -57,19 +57,25 @@ def load_data_from_hf():
         df = load_excel_from_hf(file)
         if df is not None:
             date = get_date_from_filename(file)
-            if date and 'Kode Saham' in df.columns and 'Penutupan' in df.columns:
-                df_filtered = df[['Kode Saham', 'Penutupan']].copy()
-                df_filtered['Tanggal'] = date
+            if date:
                 if file.startswith("index-"):
-                    index_by_date[date] = df_filtered
+                    # Process index: get composite only
+                    if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
+                        df_filtered = df[df["Kode Indeks"].str.lower() == "composite"]
+                        if not df_filtered.empty:
+                            closing = df_filtered.iloc[0]["Penutupan"]
+                            index_series[date] = closing
                 else:
-                    stock_by_date[date] = df_filtered
-                    filename_by_date[date] = file
+                    if "Kode Saham" in df.columns and "Penutupan" in df.columns:
+                        df_filtered = df[['Kode Saham', 'Penutupan']].copy()
+                        df_filtered["Tanggal"] = date
+                        stock_by_date[date] = df_filtered
+                        filename_by_date[date] = file
         progress_bar.progress((i + 1) / len(xlsx_files))
 
     status.success("✅ Semua file berhasil dimuat.")
     st.session_state.data_by_date = stock_by_date
-    st.session_state.index_by_date = index_by_date
+    st.session_state.index_series = pd.Series(index_series).sort_index()
     st.session_state.filename_by_date = filename_by_date
 
 # === Portfolio Optimization ===
@@ -161,6 +167,7 @@ with tab1:
 
     data_by_date = st.session_state.get("data_by_date", {})
     filename_by_date = st.session_state.get("filename_by_date", {})
+    index_series = st.session_state.get("index_series", pd.Series(dtype=float))
 
     if data_by_date:
         selected_date = st.selectbox("📆 Pilih Tanggal", sorted(data_by_date.keys(), reverse=True))
@@ -173,6 +180,12 @@ with tab1:
             st.success("✅ Dihapus.")
             st.cache_resource.clear()
             st.rerun()
+
+    if not index_series.empty:
+        st.markdown("### 💹 Indeks Pasar (Composite)")
+        df_index_display = index_series.rename("Penutupan").reset_index(names="Tanggal")
+        df_index_display["Penutupan"] = df_index_display["Penutupan"].apply(lambda x: f"{x:,.2f}")
+        st.dataframe(df_index_display, use_container_width=True)
 
 # === Tab 2: Analisis Saham ===
 with tab2:
