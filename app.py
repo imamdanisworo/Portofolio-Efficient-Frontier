@@ -35,7 +35,7 @@ valid_files = get_valid_files()
 unique_dates = sorted({d for _, d in valid_files}, reverse=True)
 
 # === Tabs ===
-tab1, tab2 = st.tabs(["📂 Upload & View", "📈 Analyze Stocks"])
+tab1, _ = st.tabs(["📂 Upload & View", "📈 Analyze Stocks"])
 
 if 'just_uploaded' not in st.session_state:
     st.session_state.just_uploaded = False
@@ -73,7 +73,7 @@ with tab1:
                 st.error(f"❌ Failed to upload {file.name}: {e}")
 
         time.sleep(5)
-        st.cache_data.clear()  # clear cache so Tab 2 sees new data
+        st.cache_data.clear()
         st.session_state.just_uploaded = True
         st.rerun()
 
@@ -108,84 +108,3 @@ with tab1:
             st.error(f"❌ Error reading {filename}: {e}")
 
     st.session_state.just_uploaded = False
-
-# === TAB 2 ===
-with tab2:
-    st.header("📈 Analyze Stock Risk, Return, and Correlation")
-
-    if st.button("🔄 Refresh Data"):
-        st.cache_data.clear()
-        st.rerun()
-
-    @st.cache_data(show_spinner=False)
-    def load_all_data():
-        valid_files = get_valid_files()
-        data = []
-        for filename, file_date in valid_files:
-            try:
-                local_path = hf_hub_download(
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    filename=filename,
-                    token=HF_TOKEN
-                )
-                df = pd.read_excel(local_path)
-
-                # Normalize and map column names
-                df.columns = df.columns.str.strip().str.lower()
-                col_map = {
-                    'tanggal perdagangan terakhir': 'DATE',
-                    'kode saham': 'STK_CODE',
-                    'penutupan': 'STK_CLOS'
-                }
-
-                if all(key in df.columns for key in col_map):
-                    df = df[list(col_map)].rename(columns=col_map)
-                    df = df.dropna()
-                    df['DATE'] = pd.to_datetime(df['DATE'], dayfirst=True, errors='coerce', format='%d %B %Y')
-                    df = df.dropna(subset=['DATE'])
-                    if not df.empty:
-                        data.append(df)
-                else:
-                    st.warning(f"Skipping {filename}: Required columns not found.")
-            except Exception as e:
-                st.warning(f"Skipping {filename}: {e}")
-        return pd.concat(data) if data else pd.DataFrame()
-
-    combined = load_all_data()
-
-    if combined.empty:
-        st.info("No valid data to analyze.")
-        st.stop()
-
-    combined = combined.sort_values('DATE', ascending=False)
-
-    if 'STK_CODE' not in combined.columns or combined['STK_CODE'].nunique() == 0:
-        st.warning("No stock codes found in the data. Please check the uploaded files.")
-        st.stop()
-
-    stock_list = sorted(combined['STK_CODE'].unique())
-    selected_stocks = st.multiselect("Select stock codes", stock_list)
-    selected_period = st.selectbox("Select period (days)", [20, 50, 100, 200, 500])
-
-    if selected_stocks:
-        filtered = combined[combined['STK_CODE'].isin(selected_stocks)].copy()
-        filtered = filtered.groupby('STK_CODE').head(selected_period)
-
-        pivoted = filtered.pivot(index='DATE', columns='STK_CODE', values='STK_CLOS').sort_index()
-        returns = pivoted.pct_change().dropna()
-
-        mean_returns = returns.mean()
-        risk = returns.std()
-        correlation = returns.corr()
-
-        st.subheader("📈 Expected Return (Mean Daily %)")
-        st.dataframe((mean_returns * 100).round(3).rename("Return (%)"))
-
-        st.subheader("📉 Risk (Daily Std Deviation %)")
-        st.dataframe((risk * 100).round(3).rename("Risk (%)"))
-
-        st.subheader("🔗 Correlation Matrix")
-        st.dataframe(correlation.round(3))
-    else:
-        st.info("Select one or more stock codes to begin analysis.")
