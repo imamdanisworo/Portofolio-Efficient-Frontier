@@ -107,7 +107,11 @@ if data_by_date:
 
     if selected_date:
         st.subheader(f"📊 Data Penutupan - {selected_date.strftime('%d %b %Y')}")
-        st.dataframe(data_by_date[selected_date], use_container_width=True)
+
+        # Format Penutupan with thousand separator
+        df_display = data_by_date[selected_date].copy()
+        df_display['Penutupan'] = df_display['Penutupan'].apply(lambda x: f"{x:,.0f}")
+        st.dataframe(df_display, use_container_width=True)
 
         # Delete Button for selected date
         file_to_delete = filename_by_date[selected_date]
