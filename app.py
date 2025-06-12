@@ -14,7 +14,6 @@ api = HfApi()
 st.set_page_config(page_title="📁 DBF Stock Manager", layout="wide")
 st.title("📁 DBF Stock Manager (Hugging Face)")
 
-# === Helper: Extract date from filename like CPyymmdd.dbf ===
 def extract_date_from_filename(name):
     try:
         base = os.path.splitext(name)[0]
@@ -24,21 +23,18 @@ def extract_date_from_filename(name):
         pass
     return None
 
-# === File List & Metadata ===
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
 valid_files = [(f, d) for f, d in valid_files if d]
 unique_dates = sorted({d for _, d in valid_files})
 
-# === Tabs ===
 tab1, tab2 = st.tabs(["📂 Upload & View", "📈 Analyze Stocks"])
 
-# === Session State ===
 if 'just_uploaded' not in st.session_state:
     st.session_state.just_uploaded = False
 
-# === TAB 1: UPLOAD & VIEW ===
+# === TAB 1 ===
 with tab1:
     st.header("⬆️ Upload DBF Files")
     uploaded_files = st.file_uploader("Upload DBF files", type="dbf", accept_multiple_files=True)
@@ -77,7 +73,6 @@ with tab1:
         format_func=lambda d: d.strftime('%d %b %Y')
     )
 
-    # === Display files matching selected date ===
     for filename, file_date in valid_files:
         if file_date != selected_date:
             continue
@@ -112,13 +107,12 @@ with tab1:
 
     st.session_state.just_uploaded = False
 
-# === TAB 2: ANALYZE STOCKS ===
+# === TAB 2 ===
 with tab2:
-    st.header("📈 Analyze Stock by Closing Price")
+    st.header("📈 Analyze Stock Risk, Return, and Correlation")
 
-    # === Combine all DBFs ===
     all_data = []
-    for filename, _ in valid_files:
+    for filename, file_date in valid_files:
         try:
             local_path = hf_hub_download(
                 repo_id=REPO_ID,
@@ -131,34 +125,42 @@ with tab2:
             df.columns = df.columns.str.upper().str.strip()
 
             if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
-                date = extract_date_from_filename(filename)
-                df['DATE'] = pd.to_datetime(date)
-                all_data.append(df[['DATE', 'STK_CODE', 'STK_CLOS']])
+                df['DATE'] = pd.to_datetime(file_date)
+                df = df[['DATE', 'STK_CODE', 'STK_CLOS']].dropna()
+                all_data.append(df)
         except Exception as e:
             st.warning(f"Skipping {filename}: {e}")
 
     if not all_data:
-        st.info("No analyzable DBF files found.")
+        st.info("No valid data to analyze.")
         st.stop()
 
-    combined_df = pd.concat(all_data)
-    combined_df = combined_df.dropna(subset=['STK_CLOS'])
-    combined_df['DATE'] = pd.to_datetime(combined_df['DATE'])
-    combined_df = combined_df.sort_values('DATE', ascending=False)
+    combined = pd.concat(all_data)
+    combined['DATE'] = pd.to_datetime(combined['DATE'])
+    combined = combined.sort_values('DATE', ascending=False)
 
-    # === UI for filtering
-    stock_list = sorted(combined_df['STK_CODE'].unique())
-    selected_stock = st.selectbox("Select stock code", stock_list)
-    period = st.selectbox("Select period (days)", [20, 50, 100, 200, 500])
+    stock_list = sorted(combined['STK_CODE'].unique())
+    selected_stocks = st.multiselect("Select stock codes", stock_list)
+    selected_period = st.selectbox("Select period (days)", [20, 50, 100, 200, 500])
 
-    # === Filter by stock and latest N days
-    filtered_df = combined_df[combined_df['STK_CODE'] == selected_stock]
-    result = filtered_df.head(period).sort_values('DATE')
+    if selected_stocks:
+        filtered = combined[combined['STK_CODE'].isin(selected_stocks)].copy()
+        filtered = filtered.groupby('STK_CODE').head(selected_period)
 
-    if result.empty:
-        st.warning("No data available for selected stock and period.")
+        pivoted = filtered.pivot(index='DATE', columns='STK_CODE', values='STK_CLOS').sort_index()
+        returns = pivoted.pct_change().dropna()
+
+        mean_returns = returns.mean()
+        risk = returns.std()
+        correlation = returns.corr()
+
+        st.subheader("📈 Expected Return (Mean Daily %)")
+        st.dataframe((mean_returns * 100).round(3).rename("Return (%)"))
+
+        st.subheader("📉 Risk (Daily Std Deviation %)")
+        st.dataframe((risk * 100).round(3).rename("Risk (%)"))
+
+        st.subheader("🔗 Correlation Matrix")
+        st.dataframe(correlation.round(3))
     else:
-        st.subheader(f"📊 {selected_stock} — Last {period} Days")
-        st.dataframe(result)
-
-        st.line_chart(result.set_index('DATE')['STK_CLOS'])
+        st.info("Select one or more stock codes to begin analysis.")
