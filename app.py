@@ -35,7 +35,7 @@ valid_files = get_valid_files()
 unique_dates = sorted({d for _, d in valid_files}, reverse=True)
 
 # === Tabs ===
-tab1, _ = st.tabs(["📂 Upload & View", "📈 Analyze Stocks"])
+tab1, _ = st.tabs(["📂 Upload & View", "📈 Analyze Stocks"])  # tab2 unused for now
 
 if 'just_uploaded' not in st.session_state:
     st.session_state.just_uploaded = False
@@ -101,8 +101,13 @@ with tab1:
             )
             df = pd.read_excel(local_path)
 
+            # Format numeric columns with thousand separators
+            formatted_df = df.copy()
+            for col in formatted_df.select_dtypes(include=['number']).columns:
+                formatted_df[col] = formatted_df[col].apply(lambda x: f"{x:,.0f}" if pd.notnull(x) else "")
+
             st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
-            st.dataframe(df)
+            st.dataframe(formatted_df)
 
         except Exception as e:
             st.error(f"❌ Error reading {filename}: {e}")
