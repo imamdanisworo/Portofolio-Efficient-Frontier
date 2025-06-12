@@ -107,6 +107,10 @@ if "data_by_date" not in st.session_state:
 data_by_date = st.session_state.get("data_by_date", {})
 filename_by_date = st.session_state.get("filename_by_date", {})
 
+# === Show count of loaded Excel files
+total_files = len(filename_by_date)
+st.markdown(f"### 📦 Jumlah File Excel Dimuat: **{total_files}**")
+
 # === Display Section ===
 st.header("📅 Pilih Tanggal dan Lihat Data")
 
