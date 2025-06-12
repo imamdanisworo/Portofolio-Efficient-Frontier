@@ -23,10 +23,12 @@ def extract_date_from_filename(name):
         pass
     return None
 
-# === File Upload ===
-uploaded_files = st.file_uploader("⬆️ Upload new DBF files", type="dbf", accept_multiple_files=True)
+# === Session flag to control refreshing
+if 'refresh' not in st.session_state:
+    st.session_state.refresh = False
 
-rerun_needed = False
+# === File Upload Section ===
+uploaded_files = st.file_uploader("⬆️ Upload new DBF files", type="dbf", accept_multiple_files=True)
 
 if uploaded_files:
     for file in uploaded_files:
@@ -35,7 +37,7 @@ if uploaded_files:
             with open(temp_path, "wb") as f:
                 f.write(file.read())
 
-            # 📄 Parse and display immediately
+            # 📄 Display parsed content immediately
             table = DBF(temp_path, load=True)
             df = pd.DataFrame(iter(table))
             df.columns = df.columns.str.upper().str.strip()
@@ -53,73 +55,79 @@ if uploaded_files:
                     token=HF_TOKEN
                 )
                 st.success(f"✅ Uploaded to Hugging Face: {file.name}")
-                rerun_needed = True
 
         except Exception as e:
             st.error(f"❌ Failed to process {file.name}: {e}")
 
-    # 🔄 Rerun once after all uploads
-    if rerun_needed:
-        st.info("Refreshing to sync with Hugging Face storage...")
-        st.rerun()
+    # 👇 Let user trigger refresh manually
+    st.warning("Upload complete. Click '🔄 Refresh from Hugging Face' to load new files.")
+    st.stop()
 
-# === Load .dbf files from HF ===
-st.header("📂 Stored DBF Files from Hugging Face")
-files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
+# === Manual Refresh Button ===
+if st.button("🔄 Refresh from Hugging Face"):
+    st.session_state.refresh = True
 
-# === Filter only valid CPyymmdd.dbf files ===
-valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
-valid_files = [(f, d) for f, d in valid_files if d]  # only keep files with valid dates
+# === Load and Display HF Data After Refresh ===
+if st.session_state.refresh:
+    st.header("📂 Stored DBF Files from Hugging Face")
+    files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+    dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 
-# === Date Filter Dropdown ===
-selected_date = None
-if valid_files:
-    st.subheader("📅 Filter by Uploaded File Date")
-    unique_dates = sorted({d for _, d in valid_files})
-    selected_date = st.selectbox(
-        "Select a date to display",
-        unique_dates,
-        format_func=lambda d: d.strftime('%d %b %Y')
-    )
+    # === Extract and filter valid filenames with dates ===
+    valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
+    valid_files = [(f, d) for f, d in valid_files if d]
 
-# === Display DBF content with separators ===
-displayed = 0
-if not valid_files:
-    st.info("No valid CPyymmdd.dbf files found in your Hugging Face Dataset.")
-else:
-    for filename, file_date in valid_files:
-        if selected_date and file_date != selected_date:
-            continue
+    # === Date Filter Dropdown ===
+    selected_date = None
+    if valid_files:
+        st.subheader("📅 Filter by Uploaded File Date")
+        unique_dates = sorted({d for _, d in valid_files})
+        selected_date = st.selectbox(
+            "Select a date to display",
+            unique_dates,
+            format_func=lambda d: d.strftime('%d %b %Y')
+        )
 
-        try:
-            local_path = hf_hub_download(
-                repo_id=REPO_ID,
-                repo_type="dataset",
-                filename=filename,
-                token=HF_TOKEN
-            )
+    # === Display DBF content with delete + separator ===
+    displayed = 0
+    if not valid_files:
+        st.info("No valid CPyymmdd.dbf files found in Hugging Face.")
+    else:
+        for filename, file_date in valid_files:
+            if selected_date and file_date != selected_date:
+                continue
 
-            table = DBF(local_path, load=True)
-            df = pd.DataFrame(iter(table))
-            df.columns = df.columns.str.upper().str.strip()
-
-            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
-            st.dataframe(df)
-
-            if st.button(f"🗑️ Delete {filename}", key=filename):
-                delete_file(
-                    path_in_repo=filename,
+            try:
+                local_path = hf_hub_download(
                     repo_id=REPO_ID,
                     repo_type="dataset",
+                    filename=filename,
                     token=HF_TOKEN
                 )
-                st.success(f"🗑️ Deleted: {filename}")
-                st.rerun()
 
-            displayed += 1
-            if displayed % 2 == 0:
-                st.markdown("### --- 📎 ---")  # visual separator
+                table = DBF(local_path, load=True)
+                df = pd.DataFrame(iter(table))
+                df.columns = df.columns.str.upper().str.strip()
 
-        except Exception as e:
-            st.error(f"Error reading {filename}: {e}")
+                st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
+                st.dataframe(df)
+
+                if st.button(f"🗑️ Delete {filename}", key=filename):
+                    delete_file(
+                        path_in_repo=filename,
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        token=HF_TOKEN
+                    )
+                    st.success(f"🗑️ Deleted: {filename}")
+                    st.session_state.refresh = False
+                    st.stop()
+
+                displayed += 1
+                if displayed % 2 == 0:
+                    st.markdown("### --- 📎 ---")
+
+            except Exception as e:
+                st.error(f"Error reading {filename}: {e}")
+else:
+    st.info("Click '🔄 Refresh from Hugging Face' to display uploaded files.")
