@@ -1,6 +1,6 @@
 import streamlit as st
 
-# Ensure set_page_config is at the very top before any other Streamlit commands
+# Set page config before anything else
 st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
 
 import pandas as pd
@@ -68,7 +68,6 @@ def load_data_from_hf():
     st.session_state.filename_by_date = filename_by_date
 
 # === Portfolio Optimization ===
-# Removed GARCH-related code
 def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
     num_assets = len(mean_returns)
 
@@ -93,24 +92,10 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
 
     return max_ret.x, min_risk.x, opt_sharpe.x
 
-
-    forecasts = {}
-    for stock in df_returns.columns:
-        try:
-            model = arch_model(df_returns[stock] * 100, vol='Garch', p=1, q=1)
-            res = model.fit(disp='off')
-            forecast_var = res.forecast(horizon=period).variance.iloc[-1].mean()
-            forecast_vol = (forecast_var ** 0.5) / 100
-            forecast_ret = df_returns[stock].mean() * period  # Using historical mean as placeholder
-            forecasts[stock] = (forecast_ret, forecast_vol)
-        except Exception as e:
-            forecasts[stock] = (0, 0)
-    return pd.DataFrame(forecasts, index=['Expected Return (GARCH)', 'Risk (GARCH)']).T
-
 # === Tabs ===
 tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
 
-# === Tab 1 ===
+# === Tab 1: Manajemen Data ===
 with tab1:
     uploaded_files = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
     if uploaded_files:
@@ -154,7 +139,7 @@ with tab1:
             st.cache_resource.clear()
             st.rerun()
 
-# === Tab 2 ===
+# === Tab 2: Analisis Saham ===
 with tab2:
     st.markdown("### 📊 Optimasi Portofolio Saham")
     data_by_date = st.session_state.get("data_by_date", {})
@@ -178,18 +163,21 @@ with tab2:
             df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
             df_returns = df_pivot.sort_index().pct_change().dropna()
 
-            mean_returns = df_returns.mean() * period
+            historical_returns = df_returns.mean()
+            mean_returns = historical_returns * period
             cov_matrix = df_returns.cov() * period
             volatility = df_returns.std() * (period ** 0.5)
             sharpe_ratio = (mean_returns - risk_free_rate) / volatility
 
             st.markdown(f"#### 📈 Statistik Saham (Periode: {period} hari)")
             stats_df = pd.DataFrame({
+                "Historical Return": historical_returns,
                 "Expected Return": mean_returns,
                 "Volatility (Risk)": volatility,
                 "Sharpe Ratio": sharpe_ratio
             })
             st.dataframe(stats_df.style.format({
+                "Historical Return": "{:.2%}",
                 "Expected Return": "{:.2%}",
                 "Volatility (Risk)": "{:.2%}",
                 "Sharpe Ratio": "{:.2f}"
@@ -210,6 +198,3 @@ with tab2:
             alloc_df = pd.concat([alloc_df, sum_row])
             st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode Historis)")
             st.dataframe(alloc_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
-
-            
-
