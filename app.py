@@ -45,7 +45,8 @@ def load_data_from_hf():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
 
-    data_by_date = {}
+    stock_by_date = {}
+    index_by_date = {}
     filename_by_date = {}
 
     progress_bar = st.progress(0)
@@ -59,12 +60,16 @@ def load_data_from_hf():
             if date and 'Kode Saham' in df.columns and 'Penutupan' in df.columns:
                 df_filtered = df[['Kode Saham', 'Penutupan']].copy()
                 df_filtered['Tanggal'] = date
-                data_by_date[date] = df_filtered
-                filename_by_date[date] = file
+                if file.startswith("index-"):
+                    index_by_date[date] = df_filtered
+                else:
+                    stock_by_date[date] = df_filtered
+                    filename_by_date[date] = file
         progress_bar.progress((i + 1) / len(xlsx_files))
 
     status.success("✅ Semua file berhasil dimuat.")
-    st.session_state.data_by_date = data_by_date
+    st.session_state.data_by_date = stock_by_date
+    st.session_state.index_by_date = index_by_date
     st.session_state.filename_by_date = filename_by_date
 
 # === Portfolio Optimization ===
@@ -97,16 +102,46 @@ tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
 
 # === Tab 1: Manajemen Data ===
 with tab1:
-    uploaded_files = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
-    if uploaded_files:
-        for file in uploaded_files:
-            try:
-                upload_file(path_or_fileobj=file, path_in_repo=file.name, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-                st.success(f"✅ Uploaded: {file.name}")
-            except Exception as e:
-                st.error(f"❌ Failed: {file.name} - {e}")
-        st.cache_resource.clear()
-        st.rerun()
+    st.markdown("### 📂 Upload Data")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        uploaded_stocks = st.file_uploader("Upload Data Saham (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="stock")
+        if uploaded_stocks:
+            for file in uploaded_stocks:
+                try:
+                    upload_file(
+                        path_or_fileobj=file,
+                        path_in_repo=file.name,
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        token=HF_TOKEN
+                    )
+                    st.success(f"✅ Uploaded Saham: {file.name}")
+                except Exception as e:
+                    st.error(f"❌ Gagal Upload Saham: {file.name} - {e}")
+            st.cache_resource.clear()
+            st.rerun()
+
+    with col2:
+        uploaded_index = st.file_uploader("Upload Data Indeks Pasar (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="index")
+        if uploaded_index:
+            for file in uploaded_index:
+                try:
+                    new_name = f"index-{file.name}"
+                    upload_file(
+                        path_or_fileobj=file,
+                        path_in_repo=new_name,
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        token=HF_TOKEN
+                    )
+                    st.success(f"✅ Uploaded Indeks: {file.name}")
+                except Exception as e:
+                    st.error(f"❌ Gagal Upload Indeks: {file.name} - {e}")
+            st.cache_resource.clear()
+            st.rerun()
 
     if st.button("🧹 Hapus Semua Data"):
         try:
@@ -163,9 +198,7 @@ with tab2:
             df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
             df_returns = df_pivot.sort_index().pct_change().dropna()
 
-            # New Historical Return: (latest / earliest) - 1
             historical_returns = df_pivot.sort_index().iloc[-1] / df_pivot.sort_index().iloc[0] - 1
-
             mean_returns = df_returns.mean() * period
             cov_matrix = df_returns.cov() * period
             volatility = df_returns.std() * (period ** 0.5)
