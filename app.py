@@ -24,18 +24,16 @@ def extract_date_from_filename(name):
         pass
     return None
 
-def clean_stk_clos(value):
+def dbf_to_excel(dbf_path, excel_path):
     try:
-        if isinstance(value, bytes):
-            value = value.decode('utf-8', errors='ignore')
-        elif isinstance(value, str):
-            value = value
-
-        value = value.replace('\x00', '').strip()
-        value = ''.join(c for c in value if c.isdigit() or c in ['.', '-'])
-        return float(value)
-    except:
-        return None
+        table = DBF(dbf_path, load=True)
+        df = pd.DataFrame(iter(table))
+        df.columns = df.columns.str.upper().str.strip()
+        df.to_excel(excel_path, index=False)
+        return df
+    except Exception as e:
+        st.error(f"❌ Conversion error: {e}")
+        return pd.DataFrame()
 
 # === File list ===
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
@@ -109,25 +107,23 @@ with tab1:
                 filename=filename,
                 token=HF_TOKEN
             )
-            table = DBF(local_path, load=True)
-            df = pd.DataFrame(iter(table))
-            df.columns = df.columns.str.upper().str.strip()
-            if 'STK_CLOS' in df.columns:
-                df['STK_CLOS'] = df['STK_CLOS'].apply(clean_stk_clos)
+            excel_path = local_path.replace(".dbf", ".xlsx")
+            df = dbf_to_excel(local_path, excel_path)
 
-            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
-            st.dataframe(df)
+            if not df.empty:
+                st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
+                st.dataframe(df)
 
-            if st.button(f"🗑️ Delete {filename}", key=filename):
-                delete_file(
-                    path_in_repo=filename,
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-                st.success(f"🗑️ Deleted: {filename}")
-                time.sleep(2)
-                st.rerun()
+                if st.button(f"🗑️ Delete {filename}", key=filename):
+                    delete_file(
+                        path_in_repo=filename,
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        token=HF_TOKEN
+                    )
+                    st.success(f"🗑️ Deleted: {filename}")
+                    time.sleep(2)
+                    st.rerun()
 
         except Exception as e:
             st.error(f"❌ Error reading {filename}: {e}")
@@ -147,12 +143,10 @@ with tab2:
                 filename=filename,
                 token=HF_TOKEN
             )
-            table = DBF(local_path, load=True)
-            df = pd.DataFrame(iter(table))
-            df.columns = df.columns.str.upper().str.strip()
+            excel_path = local_path.replace(".dbf", ".xlsx")
+            df = dbf_to_excel(local_path, excel_path)
 
             if 'STK_CODE' in df.columns and 'STK_CLOS' in df.columns:
-                df['STK_CLOS'] = df['STK_CLOS'].apply(clean_stk_clos)
                 df['DATE'] = pd.to_datetime(file_date)
                 df = df[['DATE', 'STK_CODE', 'STK_CLOS']].dropna()
                 all_data.append(df)
