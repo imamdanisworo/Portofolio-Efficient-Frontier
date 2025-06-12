@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from dbfread import DBF
-from huggingface_hub import upload_file, HfApi, hf_hub_download, delete_file
+from huggingface_hub import upload_file, HfApi, hf_hub_download
 import os
 from datetime import datetime
 import time
@@ -63,7 +63,7 @@ with tab1:
                 df = dbf_to_excel(temp_dbf_path, temp_excel_path)
 
                 if excel_filename in excel_files:
-                    delete_file(
+                    api.delete_file(
                         path_in_repo=excel_filename,
                         repo_id=REPO_ID,
                         repo_type="dataset",
@@ -87,32 +87,6 @@ with tab1:
         time.sleep(5)
         st.session_state.just_uploaded = True
         st.rerun()
-
-    if st.button("🗑️ Delete All DBF Files from HF Dataset"):
-        for dbf_file in dbf_files:
-            try:
-                delete_file(
-                    path_in_repo=dbf_file,
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-                st.success(f"✅ Deleted: {dbf_file}")
-            except Exception as e:
-                st.error(f"❌ Failed to delete {dbf_file}: {e}")
-
-    if st.button("🗑️ Delete All XLSX Files from HF Dataset"):
-        for excel_file in excel_files:
-            try:
-                delete_file(
-                    path_in_repo=excel_file,
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-                st.success(f"✅ Deleted: {excel_file}")
-            except Exception as e:
-                st.error(f"❌ Failed to delete {excel_file}: {e}")
 
     if not unique_dates:
         st.info("No valid Excel files uploaded yet.")
@@ -140,17 +114,6 @@ with tab1:
 
             st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
             st.dataframe(df)
-
-            if st.button(f"🗑️ Delete {filename}", key=filename):
-                delete_file(
-                    path_in_repo=filename,
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-                st.success(f"🗑️ Deleted: {filename}")
-                time.sleep(2)
-                st.rerun()
 
         except Exception as e:
             st.error(f"❌ Error reading {filename}: {e}")
