@@ -16,43 +16,6 @@ api = HfApi()
 
 st.markdown("<h1 style='text-align:center;'>📈 Ringkasan Saham</h1>", unsafe_allow_html=True)
 
-# === Tooltip with Explanation ===
-with st.expander("ℹ️ Penjelasan Rumus (hover untuk lihat)"):
-    st.markdown("""
-    **📈 Expected Return untuk saham *i***
-    
-    \[
-    \text{Expected Return}_i = \bar{r}_i \times T
-    \]
-
-    **📉 Risiko (Volatilitas) saham *i***
-    
-    \[
-    \text{Volatility}_i = \sigma_i \times \sqrt{T}
-    \]
-
-    **📊 Rasio Sharpe saham *i***
-    
-    \[
-    \text{Sharpe Ratio}_i = \frac{\text{Expected Return}_i - R_f}{\text{Volatility}_i}
-    \]
-
-    **🔗 Korelasi antara saham *i* dan *j***
-    
-    \[
-    \text{Corr}(i, j) = \frac{\text{Cov}(r_i, r_j)}{\sigma_i \cdot \sigma_j}
-    \]
-
-    **📊 Portofolio (berat = w)**
-
-    - Return portofolio:
-      \[ \mu_p = \mathbf{w}^\top \mu \]
-    - Risiko portofolio:
-      \[ \sigma_p = \sqrt{\mathbf{w}^\top \Sigma \mathbf{w}} \]
-    - Sharpe portofolio:
-      \[ S_p = \frac{\mu_p - R_f}{\sigma_p} \]
-    """, unsafe_allow_html=True)
-
 # === Helper Functions ===
 def get_date_from_filename(name):
     try:
