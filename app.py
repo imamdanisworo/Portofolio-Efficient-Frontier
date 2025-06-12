@@ -24,11 +24,11 @@ def extract_date_from_filename(name):
         pass
     return None
 
-# === Session flag to prevent looping rerun ===
+# === Session flag to prevent infinite reruns
 if 'just_uploaded' not in st.session_state:
     st.session_state.just_uploaded = False
 
-# === Upload Files ===
+# === File Upload ===
 uploaded_files = st.file_uploader("⬆️ Upload new DBF files", type="dbf", accept_multiple_files=True)
 
 if uploaded_files and not st.session_state.just_uploaded:
@@ -38,6 +38,7 @@ if uploaded_files and not st.session_state.just_uploaded:
             with open(temp_path, "wb") as f:
                 f.write(file.read())
 
+            # Upload to Hugging Face
             with st.spinner(f"Uploading {file.name} to Hugging Face..."):
                 upload_file(
                     path_or_fileobj=temp_path,
@@ -50,34 +51,34 @@ if uploaded_files and not st.session_state.just_uploaded:
         except Exception as e:
             st.error(f"❌ Failed to upload {file.name}: {e}")
 
-    # ⏳ Wait for HF sync, then rerun
+    # Wait for Hugging Face to sync
     with st.spinner("Waiting for Hugging Face to sync..."):
         time.sleep(5)
+
     st.session_state.just_uploaded = True
     st.rerun()
 
-# === Load DBF files from HF ===
+# === Load file list from Hugging Face ===
 st.header("📂 Stored DBF Files from Hugging Face")
-
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 
-# === Filter only valid CPyymmdd.dbf files ===
+# === Extract valid files with dates ===
 valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
 valid_files = [(f, d) for f, d in valid_files if d]
 
-# === Date Filter Dropdown ===
+# === Calendar date picker ===
 selected_date = None
 if valid_files:
-    st.subheader("📅 Filter by Uploaded File Date")
+    st.subheader("📅 Select Date From Uploaded Files")
     unique_dates = sorted({d for _, d in valid_files})
-    selected_date = st.selectbox(
-        "Select a date to display",
-        unique_dates,
-        format_func=lambda d: d.strftime('%d %b %Y')
-    )
+    selected_date = st.date_input("Select a date", value=None)
 
-# === Display DBF content ===
+    if selected_date not in unique_dates:
+        st.warning("No uploaded file matches the selected date.")
+        selected_date = None
+
+# === Display DBF tables ===
 displayed = 0
 if not valid_files:
     st.info("No valid CPyymmdd.dbf files found in Hugging Face.")
@@ -119,5 +120,5 @@ else:
         except Exception as e:
             st.error(f"Error reading {filename}: {e}")
 
-# Reset upload state after data shown
+# Reset flag after display
 st.session_state.just_uploaded = False
