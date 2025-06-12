@@ -28,6 +28,8 @@ def clean_stk_clos(value):
     try:
         if isinstance(value, bytes):
             value = value.decode('utf-8', errors='ignore').replace('\x00', '').strip()
+        elif isinstance(value, str):
+            value = value.replace('\x00', '').strip()
         return float(value)
     except:
         return None
