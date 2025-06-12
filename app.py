@@ -238,7 +238,7 @@ with tab2:
             st.dataframe(df_returns.corr().style.format("{:.2f}"), use_container_width=True)
 
             capm_returns = beta_df["CAPM Expected Return"]
-w_max, w_min, w_opt = optimize_portfolio(capm_returns, cov_matrix, risk_free_rate)
+            w_max, w_min, w_opt = optimize_portfolio(capm_returns, cov_matrix, risk_free_rate)
             alloc_df = pd.DataFrame({
                 "Saham": selected_stocks,
                 "📈 Maksimum Return": w_max,
