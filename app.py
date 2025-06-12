@@ -58,7 +58,13 @@ st.header("⬆️ Upload File Excel")
 uploaded_files = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
 
 if uploaded_files:
-    for file in uploaded_files:
+    st.markdown("### 🚀 Proses Upload Dimulai...")
+    success_count = 0
+    fail_count = 0
+    progress_bar = st.progress(0)
+    total_files = len(uploaded_files)
+
+    for i, file in enumerate(uploaded_files):
         try:
             upload_file(
                 path_or_fileobj=file,
@@ -67,14 +73,21 @@ if uploaded_files:
                 repo_type="dataset",
                 token=HF_TOKEN
             )
-            st.success(f"✅ Uploaded: {file.name}")
+            st.success(f"✅ {file.name} berhasil diunggah.")
+            success_count += 1
         except Exception as e:
-            st.error(f"❌ Gagal upload: {file.name} — {e}")
-    st.session_state.pop("data_by_date", None)
-    st.rerun()
+            st.error(f"❌ {file.name} gagal: {e}")
+            fail_count += 1
+        progress_bar.progress((i + 1) / total_files)
+
+    st.success(f"✅ Selesai! {success_count} berhasil, {fail_count} gagal.")
+
+    if st.button("🔄 Selesai & Muat Ulang Data"):
+        st.session_state.pop("data_by_date", None)
+        st.rerun()
 
 # === Refresh Button ===
-if st.button("🔄 Refresh Data"):
+if st.button("🔁 Muat Ulang Manual"):
     st.session_state.pop("data_by_date", None)
     st.rerun()
 
@@ -99,7 +112,7 @@ if st.button("🧹 Hapus SELURUH File Excel dari Dataset"):
     except Exception as e:
         st.error(f"❌ Gagal menghapus semua file: {e}")
 
-# === Load Data (once per session unless cleared)
+# === Load Data ===
 if "data_by_date" not in st.session_state:
     with st.spinner("📦 Mengambil data dari Hugging Face..."):
         load_data_from_hf()
@@ -107,7 +120,7 @@ if "data_by_date" not in st.session_state:
 data_by_date = st.session_state.get("data_by_date", {})
 filename_by_date = st.session_state.get("filename_by_date", {})
 
-# === Show count of loaded Excel files
+# === Show total file count
 total_files = len(filename_by_date)
 st.markdown(f"### 📦 Jumlah File Excel Dimuat: **{total_files}**")
 
@@ -120,7 +133,6 @@ if data_by_date:
 
     if selected_date:
         st.subheader(f"📊 Data Penutupan - {selected_date.strftime('%d %b %Y')}")
-
         df_display = data_by_date[selected_date].copy()
         df_display['Penutupan'] = df_display['Penutupan'].apply(lambda x: f"{x:,.0f}")
         st.dataframe(df_display, use_container_width=True)
