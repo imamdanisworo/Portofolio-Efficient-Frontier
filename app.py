@@ -62,61 +62,61 @@ st.header("📂 Stored DBF Files from Hugging Face")
 files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 
-# === Extract valid files with CPyymmdd format
+# === Extract valid CPyymmdd.dbf files and dates
 valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
 valid_files = [(f, d) for f, d in valid_files if d]
 unique_dates = sorted({d for _, d in valid_files})
 
-# === Date input via calendar
-selected_date = st.date_input("📅 Select a date to display", value=None)
-
-# === Stop here if selected date is not among uploaded files
-if selected_date and selected_date not in unique_dates:
-    st.warning("⚠️ No uploaded file matches the selected date.")
-    st.session_state.just_uploaded = False
+# === If no uploaded data, show info
+if not unique_dates:
+    st.info("No valid CPyymmdd.dbf files found in Hugging Face.")
     st.stop()
+
+# === Dropdown date selector (only valid dates)
+selected_date = st.selectbox(
+    "📅 Select a date to display",
+    options=unique_dates,
+    format_func=lambda d: d.strftime('%d %b %Y')
+)
 
 # === Display DBF tables only for selected date
 displayed = 0
-if not valid_files:
-    st.info("No valid CPyymmdd.dbf files found in Hugging Face.")
-else:
-    for filename, file_date in valid_files:
-        if selected_date and file_date != selected_date:
-            continue
+for filename, file_date in valid_files:
+    if file_date != selected_date:
+        continue
 
-        try:
-            local_path = hf_hub_download(
+    try:
+        local_path = hf_hub_download(
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            filename=filename,
+            token=HF_TOKEN
+        )
+
+        table = DBF(local_path, load=True)
+        df = pd.DataFrame(iter(table))
+        df.columns = df.columns.str.upper().str.strip()
+
+        st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
+        st.dataframe(df)
+
+        if st.button(f"🗑️ Delete {filename}", key=filename):
+            delete_file(
+                path_in_repo=filename,
                 repo_id=REPO_ID,
                 repo_type="dataset",
-                filename=filename,
                 token=HF_TOKEN
             )
+            st.success(f"🗑️ Deleted: {filename}")
+            st.session_state.just_uploaded = False
+            st.rerun()
 
-            table = DBF(local_path, load=True)
-            df = pd.DataFrame(iter(table))
-            df.columns = df.columns.str.upper().str.strip()
+        displayed += 1
+        if displayed % 2 == 0:
+            st.markdown("### --- 📎 ---")
 
-            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
-            st.dataframe(df)
+    except Exception as e:
+        st.error(f"❌ Error reading or displaying {filename}: {e}")
 
-            if st.button(f"🗑️ Delete {filename}", key=filename):
-                delete_file(
-                    path_in_repo=filename,
-                    repo_id=REPO_ID,
-                    repo_type="dataset",
-                    token=HF_TOKEN
-                )
-                st.success(f"🗑️ Deleted: {filename}")
-                st.session_state.just_uploaded = False
-                st.rerun()
-
-            displayed += 1
-            if displayed % 2 == 0:
-                st.markdown("### --- 📎 ---")
-
-        except Exception as e:
-            st.error(f"❌ Error reading or displaying {filename}: {e}")
-
-# === Reset upload flag after display
+# === Reset upload flag
 st.session_state.just_uploaded = False
