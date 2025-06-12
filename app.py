@@ -80,7 +80,7 @@ with tab1:
         st.info("No valid Excel files uploaded yet.")
         st.stop()
 
-    st.header("📅 Select Date to View")
+    st.header("🗕️ Select Date to View")
     selected_date = st.selectbox(
         "Choose a date (from uploaded files)", 
         options=sorted(unique_dates, reverse=True),
@@ -113,7 +113,8 @@ with tab2:
     st.header("📈 Analyze Stock Risk, Return, and Correlation")
 
     @st.cache_data(show_spinner=False)
-    def load_all_data(valid_files):
+    def load_all_data():
+        valid_files = get_valid_files()
         data = []
         for filename, file_date in valid_files:
             try:
@@ -144,7 +145,7 @@ with tab2:
                 st.warning(f"Skipping {filename}: {e}")
         return data
 
-    all_data = load_all_data(valid_files)
+    all_data = load_all_data()
 
     if not all_data:
         st.info("No valid data to analyze.")
