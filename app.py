@@ -8,7 +8,11 @@ import os
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
 from scipy.optimize import minimize
-from arch import arch_model  # Added for GARCH modeling
+try:
+    from arch import arch_model  # Added for GARCH modeling
+except ModuleNotFoundError:
+    st.error("Modul 'arch' tidak ditemukan. Jalankan `pip install arch` untuk menggunakan fitur GARCH.")
+    arch_model = None
 
 # === CONFIG ===
 REPO_ID = "imamdanisworo/dbf-storage"
@@ -95,6 +99,8 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
 
 # === GARCH-based Forecasting ===
 def forecast_garch_returns(df_returns, period):
+    if arch_model is None:
+        return pd.DataFrame(columns=['Expected Return (GARCH)', 'Risk (GARCH)'])
     forecasts = {}
     for stock in df_returns.columns:
         try:
