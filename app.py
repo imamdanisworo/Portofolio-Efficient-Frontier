@@ -179,9 +179,11 @@ with tab2:
 
         if selected_stocks and st.button("🔍 Analisis"):
             df_filtered = df_all[df_all['Kode Saham'].isin(selected_stocks)]
-            recent_dates = sorted(df_filtered['Tanggal'].unique(), reverse=True)[:period]
-            df_recent = df_filtered[df_filtered['Tanggal'].isin(recent_dates)]
-            df_pivot = df_recent.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
+            df_filtered = df_filtered.sort_values(by="Tanggal", ascending=False)
+            df_filtered = df_filtered.groupby("Kode Saham").head(period)
+
+            df_pivot = df_filtered.pivot(index="Tanggal", columns="Kode Saham", values="Penutupan")
+            df_pivot = df_pivot.dropna(axis=0)
             df_returns = np.log(df_pivot.sort_index() / df_pivot.sort_index().shift(1)).dropna()
 
             index_filtered = index_series[index_series.index.isin(df_returns.index)]
@@ -195,7 +197,6 @@ with tab2:
             avg_corr = df_returns.corr().mean()
             sharpe_ratio = (mean_returns - risk_free_rate) / volatility
 
-            # Compute CAPM and Beta before using them
             periods_per_year = 252
             daily_rf = (1 + risk_free_rate) ** (1 / periods_per_year) - 1
             excess_market = market_returns - daily_rf
@@ -245,14 +246,15 @@ with tab2:
                 adjusted_returns.append(adjusted_return)
             adj_return_series = pd.Series(adjusted_returns, index=combined_df.index)
 
-            # Use adjusted return for allocation
-            w_max, w_min, w_opt = optimize_portfolio(adj_return_series, cov_matrix, risk_free_rate)
+            w_max, w_min, w_opt = optimize_portfolio(adj_return_series.values, cov_matrix.values, risk_free_rate)
+
             alloc_df = pd.DataFrame({
-                "Saham": selected_stocks,
+                "Saham": combined_df.index,
                 "📈 Maksimum Return": w_max,
                 "🛡️ Minimum Risk": w_min,
                 "⚖️ Optimum Return": w_opt
             }).set_index("Saham")
+
             sum_row = pd.DataFrame(alloc_df.sum()).T
             sum_row.index = ["TOTAL"]
             alloc_df = pd.concat([alloc_df, sum_row])
@@ -260,9 +262,8 @@ with tab2:
             st.markdown("#### 🧮 Alokasi Optimal Portofolio (Metode CAPM, Beta & Korelasi)")
             st.dataframe(alloc_df.applymap(lambda x: f"{x:.2%}"), use_container_width=True)
 
-            # Display portfolio metrics
-            port_ret = np.dot(w_opt, adj_return_series)
-            port_vol = np.sqrt(np.dot(w_opt.T, np.dot(cov_matrix, w_opt)))
+            port_ret = np.dot(w_opt, adj_return_series.values)
+            port_vol = np.sqrt(np.dot(w_opt.T, np.dot(cov_matrix.values, w_opt)))
             port_sharpe = (port_ret - risk_free_rate) / port_vol if port_vol != 0 else 0
 
             st.markdown("#### 📌 Statistik Portofolio Optimal")
