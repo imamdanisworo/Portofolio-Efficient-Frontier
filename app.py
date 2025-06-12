@@ -1,31 +1,73 @@
 import streamlit as st
-from huggingface_hub import HfApi, delete_file
+import pandas as pd
+import os
+from datetime import datetime
+from huggingface_hub import HfApi, hf_hub_download, upload_file
 
 # === CONFIG ===
 REPO_ID = "imamdanisworo/dbf-storage"
 HF_TOKEN = st.secrets["HF_TOKEN"]
 api = HfApi()
 
-st.set_page_config(page_title="🗑️ Delete All Excel Files", layout="wide")
-st.title("🗑️ Reset Hugging Face Dataset")
+st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
+st.title("📈 Ringkasan Saham - Kode & Penutupan")
 
-# === List all Excel files ===
-def get_excel_files():
+# === Helper ===
+def get_date_from_filename(name):
+    try:
+        base = os.path.splitext(name)[0]
+        date_part = base.split("-")[-1]
+        return datetime.strptime(date_part, "%Y%m%d").date()
+    except Exception:
+        return None
+
+@st.cache_data(show_spinner=False)
+def load_existing_files():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-    return [f for f in files if f.lower().endswith(".xlsx")]
+    xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
+    
+    data_by_date = {}
+    for file in xlsx_files:
+        try:
+            local_path = hf_hub_download(repo_id=REPO_ID, filename=file, repo_type="dataset", token=HF_TOKEN)
+            df = pd.read_excel(local_path)
+            date = get_date_from_filename(file)
+            if date and 'Kode Saham' in df.columns and 'Penutupan' in df.columns:
+                df_filtered = df[['Kode Saham', 'Penutupan']].copy()
+                df_filtered['Tanggal'] = date
+                data_by_date[date] = df_filtered
+        except Exception as e:
+            st.warning(f"Gagal memuat: {file} - {e}")
+    return data_by_date
 
-excel_files = get_excel_files()
+# === Upload Section ===
+uploaded_files = st.file_uploader("⬆️ Upload file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True)
 
-if not excel_files:
-    st.success("✅ No Excel files found — dataset is already clean.")
+if uploaded_files:
+    for file in uploaded_files:
+        try:
+            upload_file(
+                path_or_fileobj=file,
+                path_in_repo=file.name,
+                repo_id=REPO_ID,
+                repo_type="dataset",
+                token=HF_TOKEN
+            )
+            st.success(f"✅ Uploaded to HF: {file.name}")
+        except Exception as e:
+            st.error(f"❌ Upload failed: {file.name} - {e}")
+    st.cache_data.clear()
+    st.rerun()
+
+# === Load and Display Section ===
+data_by_date = load_existing_files()
+
+if data_by_date:
+    all_dates = sorted(data_by_date.keys())
+    selected_date = st.selectbox("📅 Pilih Tanggal", options=all_dates)
+
+    if selected_date:
+        st.subheader(f"📊 Data Penutupan - {selected_date.strftime('%d %b %Y')}")
+        st.dataframe(data_by_date[selected_date], use_container_width=True)
 else:
-    st.warning("⚠️ This will permanently delete all Excel (.xlsx) files from the dataset.")
-    if st.button("🔥 Delete All Excel Files"):
-        for f in excel_files:
-            try:
-                delete_file(path_in_repo=f, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-                st.success(f"🗑️ Deleted: {f}")
-            except Exception as e:
-                st.error(f"❌ Failed to delete {f}: {e}")
-        st.cache_data.clear()
-        st.rerun()
+    st.info("💡 Belum ada data di Hugging Face Dataset.")
