@@ -37,15 +37,7 @@ if uploaded_files:
         except Exception as e:
             st.error(f"❌ Upload failed: {e}")
 
-# === Load and Display All Existing Files from HF ===
-st.header("📂 Stored DBF Files from Hugging Face")
-files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
-
-# === Date Filter ===
-st.subheader("📅 Filter by File Date (from filename like CP250515.dbf)")
-selected_date = st.date_input("Select a date to display (optional)", value=None)
-
+# === Helper to extract date from filename ===
 def extract_date_from_filename(name):
     try:
         base = os.path.splitext(name)[0]
@@ -55,14 +47,32 @@ def extract_date_from_filename(name):
         pass
     return None
 
-displayed = 0
-if not dbf_files:
-    st.info("No .dbf files found in Hugging Face Dataset.")
-else:
-    for filename in dbf_files:
-        file_date = extract_date_from_filename(filename)
+# === Load .dbf files from HF ===
+st.header("📂 Stored DBF Files from Hugging Face")
+files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+dbf_files = sorted([f for f in files if f.lower().endswith(".dbf")])
 
-        # Filter by selected date
+# === Filter only valid CPyymmdd.dbf files ===
+valid_files = [(f, extract_date_from_filename(f)) for f in dbf_files]
+valid_files = [(f, d) for f, d in valid_files if d]  # only keep files with valid dates
+
+# === Date filter dropdown ===
+selected_date = None
+if valid_files:
+    st.subheader("📅 Filter by Uploaded File Date")
+    unique_dates = sorted({d for _, d in valid_files})
+    selected_date = st.selectbox(
+        "Select a date to display",
+        unique_dates,
+        format_func=lambda d: d.strftime('%d %b %Y')
+    )
+
+# === Display DBF content ===
+displayed = 0
+if not valid_files:
+    st.info("No valid CPyymmdd.dbf files found in your Hugging Face Dataset.")
+else:
+    for filename, file_date in valid_files:
         if selected_date and file_date != selected_date:
             continue
 
@@ -78,19 +88,22 @@ else:
             df = pd.DataFrame(iter(table))
             df.columns = df.columns.str.upper().str.strip()
 
-            # Display table
-            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y') if file_date else 'Unknown date'}")
+            st.subheader(f"📄 {filename} — {file_date.strftime('%d %b %Y')}")
             st.dataframe(df)
 
-            # Delete button
             if st.button(f"🗑️ Delete {filename}", key=filename):
-                delete_file(path_in_repo=filename, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+                delete_file(
+                    path_in_repo=filename,
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    token=HF_TOKEN
+                )
                 st.success(f"🗑️ Deleted: {filename}")
                 st.rerun()
 
             displayed += 1
-            if displayed % 2 == 0:  # separator every 2 tables
-                st.markdown("### --- 📎 ---")  # bold styled line
+            if displayed % 2 == 0:
+                st.markdown("### --- 📎 ---")
 
         except Exception as e:
             st.error(f"Error reading {filename}: {e}")
