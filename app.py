@@ -1,15 +1,12 @@
 import streamlit as st
-
-# Set page config before anything else
-st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
-
 import pandas as pd
 import os
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
 from scipy.optimize import minimize
 
-# === CONFIG ===
+# === CONFIGURATION ===
+st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
 REPO_ID = "imamdanisworo/dbf-storage"
 HF_TOKEN = st.secrets["HF_TOKEN"]
 api = HfApi()
@@ -40,7 +37,6 @@ def load_excel_from_hf(filename):
         st.warning(f"⚠️ Gagal memuat: {filename} - {e}")
         return None
 
-# === Load All Data ===
 def load_data_from_hf():
     files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
     xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
@@ -105,19 +101,20 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate):
 # === Tabs ===
 tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
 
-# === Tab 1: Manajemen Data ===
+# === Tab 1 ===
 with tab1:
     st.markdown("## 📂 Manajemen Data")
 
-    # File count info
+    # Automatically load if missing
+    if "data_by_date" not in st.session_state or "index_series" not in st.session_state:
+        with st.spinner("📦 Mengambil data dari Hugging Face..."):
+            load_data_from_hf()
+
     data_by_date = st.session_state.get("data_by_date", {})
     index_series = st.session_state.get("index_series", pd.Series(dtype=float))
-    stock_file_count = len(data_by_date)
-    index_file_count = len(index_series)
+    filename_by_date = st.session_state.get("filename_by_date", {})
 
-    st.info(f"📁 **{stock_file_count}** file Ringkasan Saham dimuat | 💹 **{index_file_count}** file Ringkasan Indeks dimuat")
-
-    st.markdown("Unggah file Excel (.xlsx) untuk Ringkasan Saham dan Indeks Pasar (hanya indeks COMPOSITE).")
+    st.info(f"📁 **{len(data_by_date)}** file Ringkasan Saham dimuat | 💹 **{len(index_series)}** file Ringkasan Indeks dimuat")
 
     col1, col2 = st.columns(2)
 
@@ -127,16 +124,11 @@ with tab1:
         if uploaded_stocks:
             for file in uploaded_stocks:
                 try:
-                    upload_file(
-                        path_or_fileobj=file,
-                        path_in_repo=file.name,
-                        repo_id=REPO_ID,
-                        repo_type="dataset",
-                        token=HF_TOKEN
-                    )
+                    upload_file(path_or_fileobj=file, path_in_repo=file.name, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
                     st.success(f"✅ Uploaded Saham: {file.name}")
                 except Exception as e:
                     st.error(f"❌ Gagal Upload Saham: {file.name} - {e}")
+            st.cache_resource.clear()
 
     with col2:
         st.markdown("### 💹 Upload Ringkasan Indeks (COMPOSITE)")
@@ -148,47 +140,29 @@ with tab1:
                 try:
                     new_name = f"index-{file.name}"
                     status.text(f"📤 Mengunggah: {file.name}")
-                    upload_file(
-                        path_or_fileobj=file,
-                        path_in_repo=new_name,
-                        repo_id=REPO_ID,
-                        repo_type="dataset",
-                        token=HF_TOKEN
-                    )
+                    upload_file(path_or_fileobj=file, path_in_repo=new_name, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
                     st.success(f"✅ Uploaded Indeks: {file.name}")
                 except Exception as e:
                     st.error(f"❌ Gagal Upload Indeks: {file.name} - {e}")
                 progress.progress((i + 1) / len(uploaded_index))
             status.success("✅ Semua data indeks berhasil diunggah.")
+            st.cache_resource.clear()
 
     st.divider()
 
-    st.markdown("### 🔄 Perbarui & Hapus Data")
-
-    colr1, colr2 = st.columns(2)
-
-    with colr1:
-        if st.button("🔄 Refresh Data dari Server"):
-            with st.spinner("📦 Memuat ulang semua data..."):
-                load_data_from_hf()
-            st.success("✅ Data diperbarui dari Hugging Face.")
-
-    with colr2:
-        if st.button("🚨 Hapus Semua File Excel"):
-            try:
-                all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-                for file in all_files:
-                    if file.lower().endswith(".xlsx"):
-                        delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
-                st.success("✅ Semua file berhasil dihapus.")
-                st.cache_resource.clear()
-            except Exception as e:
-                st.error(str(e))
-
-    filename_by_date = st.session_state.get("filename_by_date", {})
+    if st.button("🚨 Hapus Semua File Excel"):
+        try:
+            all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            for file in all_files:
+                if file.lower().endswith(".xlsx"):
+                    delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
+            st.success("✅ Semua file berhasil dihapus.")
+            st.cache_resource.clear()
+        except Exception as e:
+            st.error(str(e))
 
     if data_by_date:
-        st.markdown("### 📅 Lihat Data Ringkasan Saham per Tanggal")
+        st.markdown("### 📅 Lihat Data Saham per Tanggal")
         selected_date = st.selectbox("Pilih tanggal data:", sorted(data_by_date.keys(), reverse=True))
         df_show = data_by_date[selected_date].copy()
         df_show['Penutupan'] = df_show['Penutupan'].apply(lambda x: f"{x:,.0f}")
@@ -209,16 +183,13 @@ with tab1:
         })
         st.dataframe(df_summary, use_container_width=True, hide_index=True)
 
-# === Tab 2: Analisis Saham ===
+# === Tab 2 ===
 with tab2:
     st.markdown("### 📊 Optimasi Portofolio Saham")
-    data_by_date = st.session_state.get("data_by_date", {})
-
     if not data_by_date:
         st.warning("Belum ada data.")
     else:
-        df_all = pd.concat(data_by_date.values(), ignore_index=True)
-        df_all = df_all.sort_values(by="Tanggal", ascending=False)
+        df_all = pd.concat(data_by_date.values(), ignore_index=True).sort_values(by="Tanggal", ascending=False)
 
         stocks = sorted(df_all["Kode Saham"].unique())
         selected_stocks = st.multiselect("Pilih Saham", stocks)
