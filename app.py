@@ -67,7 +67,7 @@ def load_data_from_hf():
     st.session_state.index_series = pd.Series(index_series).sort_index()
     st.session_state.filename_by_date = filename_by_date
 
-# Load data initially
+# ✅ Load data on first run WITH spinner
 if "data_by_date" not in st.session_state or "index_series" not in st.session_state:
     with st.spinner("📦 Memuat data dari Hugging Face..."):
         load_data_from_hf()
