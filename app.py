@@ -59,7 +59,6 @@ def load_data_from_hf():
             date = get_date_from_filename(file)
             if date:
                 if file.startswith("index-"):
-                    # Process index: get composite only
                     if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
                         df_filtered = df[df["Kode Indeks"].str.lower() == "composite"]
                         if not df_filtered.empty:
@@ -108,48 +107,55 @@ tab1, tab2 = st.tabs(["📂 Manajemen Data", "📊 Analisis Saham"])
 
 # === Tab 1: Manajemen Data ===
 with tab1:
-    st.markdown("### 📂 Upload Data")
+    st.markdown("## 📂 Manajemen Data")
+    st.markdown("Unggah data saham dan indeks pasar untuk dianalisis.")
 
-    col1, col2 = st.columns(2)
+    with st.container():
+        col1, col2 = st.columns(2)
 
-    with col1:
-        uploaded_stocks = st.file_uploader("Upload Data Saham (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="stock")
-        if uploaded_stocks:
-            for file in uploaded_stocks:
-                try:
-                    upload_file(
-                        path_or_fileobj=file,
-                        path_in_repo=file.name,
-                        repo_id=REPO_ID,
-                        repo_type="dataset",
-                        token=HF_TOKEN
-                    )
-                    st.success(f"✅ Uploaded Saham: {file.name}")
-                except Exception as e:
-                    st.error(f"❌ Gagal Upload Saham: {file.name} - {e}")
-            st.cache_resource.clear()
-            st.rerun()
+        with col1:
+            st.markdown("### 📁 Upload Data Saham")
+            uploaded_stocks = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="stock")
+            if uploaded_stocks:
+                for file in uploaded_stocks:
+                    try:
+                        upload_file(
+                            path_or_fileobj=file,
+                            path_in_repo=file.name,
+                            repo_id=REPO_ID,
+                            repo_type="dataset",
+                            token=HF_TOKEN
+                        )
+                        st.success(f"✅ Uploaded Saham: {file.name}")
+                    except Exception as e:
+                        st.error(f"❌ Gagal Upload Saham: {file.name} - {e}")
+                st.cache_resource.clear()
+                st.rerun()
 
-    with col2:
-        uploaded_index = st.file_uploader("Upload Data Indeks Pasar (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="index")
-        if uploaded_index:
-            for file in uploaded_index:
-                try:
-                    new_name = f"index-{file.name}"
-                    upload_file(
-                        path_or_fileobj=file,
-                        path_in_repo=new_name,
-                        repo_id=REPO_ID,
-                        repo_type="dataset",
-                        token=HF_TOKEN
-                    )
-                    st.success(f"✅ Uploaded Indeks: {file.name}")
-                except Exception as e:
-                    st.error(f"❌ Gagal Upload Indeks: {file.name} - {e}")
-            st.cache_resource.clear()
-            st.rerun()
+        with col2:
+            st.markdown("### 💹 Upload Data Indeks Pasar")
+            uploaded_index = st.file_uploader("Pilih file Excel (.xlsx)", type=["xlsx"], accept_multiple_files=True, key="index")
+            if uploaded_index:
+                for file in uploaded_index:
+                    try:
+                        new_name = f"index-{file.name}"
+                        upload_file(
+                            path_or_fileobj=file,
+                            path_in_repo=new_name,
+                            repo_id=REPO_ID,
+                            repo_type="dataset",
+                            token=HF_TOKEN
+                        )
+                        st.success(f"✅ Uploaded Indeks: {file.name}")
+                    except Exception as e:
+                        st.error(f"❌ Gagal Upload Indeks: {file.name} - {e}")
+                st.cache_resource.clear()
+                st.rerun()
 
-    if st.button("🧹 Hapus Semua Data"):
+    st.divider()
+
+    st.markdown("### 🧹 Hapus Semua Data")
+    if st.button("🚨 Hapus Semua File Excel"):
         try:
             all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
             for file in all_files:
@@ -170,19 +176,20 @@ with tab1:
     index_series = st.session_state.get("index_series", pd.Series(dtype=float))
 
     if data_by_date:
-        selected_date = st.selectbox("📆 Pilih Tanggal", sorted(data_by_date.keys(), reverse=True))
+        st.markdown("### 📅 Lihat Data Saham per Tanggal")
+        selected_date = st.selectbox("Pilih tanggal data:", sorted(data_by_date.keys(), reverse=True))
         df_show = data_by_date[selected_date].copy()
         df_show['Penutupan'] = df_show['Penutupan'].apply(lambda x: f"{x:,.0f}")
         st.dataframe(df_show, use_container_width=True)
 
-        if st.button("🗑️ Hapus Data Ini"):
+        if st.button("🗑️ Hapus Data Saham Tanggal Ini"):
             delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Dihapus.")
             st.cache_resource.clear()
             st.rerun()
 
     if not index_series.empty:
-        st.markdown("### 💹 Indeks Pasar (Composite)")
+        st.markdown("### 💹 Ringkasan Indeks Pasar: Composite")
         df_index_display = index_series.rename("Penutupan").reset_index(names="Tanggal")
         df_index_display["Penutupan"] = df_index_display["Penutupan"].apply(lambda x: f"{x:,.2f}")
         st.dataframe(df_index_display, use_container_width=True)
