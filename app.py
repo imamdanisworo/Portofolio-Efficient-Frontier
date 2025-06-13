@@ -15,10 +15,8 @@ def get_hf_api():
 
 api = get_hf_api()
 
-# Header
 st.markdown("<h2 style='text-align:center;'>📈 Ringkasan Saham</h2>", unsafe_allow_html=True)
 
-# Helpers
 def get_date_from_filename(name):
     try:
         date_part = os.path.splitext(name)[0].split("-")[-1]
@@ -126,6 +124,9 @@ def process_files(files, is_index=False):
         if not valid:
             messages.append(f"{file.name}: {msg}")
         else:
+            if not is_index and date in st.session_state["data_by_date"]:
+                messages.append(f"⚠️ {file.name}: data untuk tanggal ini sudah ada, akan ditimpa.")
+
             try:
                 name_in_repo = f"index-{file.name}" if is_index else file.name
                 upload_file(path_or_fileobj=file, path_in_repo=name_in_repo,
@@ -173,6 +174,7 @@ with col2:
 
 if uploaded_any:
     st.cache_data.clear()
+    st.cache_resource.clear()  # ✅ Fix: Ensure updated files are loaded
     st.rerun()
 
 # Delete All
@@ -186,6 +188,7 @@ if st.button("🧹 Hapus Semua Data"):
                     delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Semua file berhasil dihapus.")
             st.cache_data.clear()
+            st.cache_resource.clear()
             st.session_state.clear()
             st.rerun()
         except Exception as e:
@@ -196,22 +199,36 @@ st.divider()
 st.markdown(f"**📄 Jumlah File Saham:** {len(data_by_date)}  &nbsp;&nbsp;|&nbsp;&nbsp; 📄 **Jumlah File Indeks:** {len(index_series)}")
 
 if data_by_date:
-    selected_date = st.selectbox("📆 Pilih Tanggal Data", sorted(data_by_date.keys(), reverse=True))
+    sorted_dates = sorted(data_by_date.keys(), reverse=True)
+    date_labels = [d.strftime("%d-%b-%Y") for d in sorted_dates]
+    selected_label = st.selectbox("📆 Pilih Tanggal Data", date_labels)
+    selected_date = sorted_dates[date_labels.index(selected_label)]
+
     df_show = data_by_date[selected_date].copy()
     df_show["Penutupan"] = df_show["Penutupan"].apply(lambda x: f"{x:,.0f}")
 
     if selected_date in index_series:
         st.markdown("#### 📊 Indeks Composite")
-        st.dataframe(pd.DataFrame({"Composite": [index_series[selected_date]]}), use_container_width=True)
+        index_df = pd.DataFrame({"Composite": [f"{index_series[selected_date]:,.0f}"]})
+        st.dataframe(index_df, use_container_width=True)
 
     st.markdown("#### 📋 Data Saham")
     st.dataframe(df_show, use_container_width=True)
+
+    # Download button (optional)
+    try:
+        file_path = hf_hub_download(REPO_ID, filename_by_date[selected_date], repo_type="dataset", token=HF_TOKEN)
+        with open(file_path, "rb") as f:
+            st.download_button("⬇️ Unduh File Saham", f, file_name=filename_by_date[selected_date])
+    except:
+        pass
 
     if st.button("🗑️ Hapus Data Ini"):
         try:
             delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Data berhasil dihapus.")
             st.cache_data.clear()
+            st.cache_resource.clear()
             st.session_state.clear()
             st.rerun()
         except Exception as e:
