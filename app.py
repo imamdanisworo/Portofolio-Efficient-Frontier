@@ -176,11 +176,6 @@ def handle_upload(files, is_index=False, label="File"):
             icon = "✅" if success else "❌"
             st.markdown(f"{icon} **{fname}**: {msg}")
 
-        if rerun_needed:
-            if st.button():
-                st.cache_data.clear()
-                st.rerun()
-
 col1, col2 = st.columns(2)
 
 with col1:
