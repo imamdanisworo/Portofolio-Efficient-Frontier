@@ -4,3 +4,4 @@ openpyxl
 scipy
 arch
 huggingface_hub
+plotly
