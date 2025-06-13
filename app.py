@@ -104,6 +104,7 @@ def validate_excel(file_bytes, is_index):
 
     return True, df, None
 
+# ✅ MODIFIED: process_file
 def process_file(file, is_index=False):
     try:
         file_bytes = file.read()
@@ -112,14 +113,24 @@ def process_file(file, is_index=False):
             return False, error_msg
 
         name_in_repo = f"index-{file.name}" if is_index else file.name
+        date = get_date_from_filename(file.name)
+        if not date:
+            return False, "❌ Nama file tidak mengandung tanggal valid (format: YYYYMMDD)"
 
-        # Delete old version
+        # Check if file exists (overwrite warning)
+        existing_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+        will_overwrite = name_in_repo in existing_files
+
+        if will_overwrite:
+            st.info(f"⚠️ File dengan nama **{name_in_repo}** sudah ada dan akan diganti.")
+
+        # Delete old version if exists
         try:
             delete_file(path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         except:
             pass
 
-        # Upload new version
+        # Upload
         upload_file(
             path_or_fileobj=io.BytesIO(file_bytes),
             path_in_repo=name_in_repo,
@@ -128,10 +139,7 @@ def process_file(file, is_index=False):
             token=HF_TOKEN
         )
 
-        date = get_date_from_filename(file.name)
-        if not date:
-            return False, "❌ Nama file tidak mengandung tanggal valid (format: YYYYMMDD)"
-
+        # Save to session
         if is_index:
             filtered = df[df["Kode Indeks"].str.lower() == "composite"]
             if not filtered.empty:
@@ -142,10 +150,13 @@ def process_file(file, is_index=False):
             st.session_state["data_by_date"][date] = filtered
             st.session_state["filename_by_date"][date] = name_in_repo
 
-        return True, f"✅ {file.name} berhasil diunggah"
+        action = "diperbarui" if will_overwrite else "diunggah"
+        return True, f"✅ {file.name} berhasil {action}."
+
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
+# ✅ MODIFIED: handle_upload
 def handle_upload(files, is_index=False, label="File"):
     if files:
         st.markdown(f"#### 📥 Status Upload {label}")
@@ -156,7 +167,6 @@ def handle_upload(files, is_index=False, label="File"):
                 success, message = process_file(file, is_index=is_index)
                 results.append((file.name, success, message))
 
-        # Show result table
         for fname, success, msg in results:
             icon = "✅" if success else "❌"
             st.markdown(f"{icon} **{fname}**: {msg}")
