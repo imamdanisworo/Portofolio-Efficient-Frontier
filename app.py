@@ -6,7 +6,7 @@ from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
 
 # CONFIG
-st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
+st.set_page_config(page_title="📈 Portofolio Efficient Frontier", layout="wide")
 REPO_ID = "imamdanisworo/dbf-storage"
 HF_TOKEN = st.secrets["HF_TOKEN"]
 
