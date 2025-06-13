@@ -172,9 +172,11 @@ with col2:
             st.toast(m)
         uploaded_any = uploaded_any or changed
 
+# ✅ BUG FIX: reload all after upload
 if uploaded_any:
     st.cache_data.clear()
-    st.cache_resource.clear()  # ✅ Fix: Ensure updated files are loaded
+    st.cache_resource.clear()
+    st.session_state.pop("data_loaded", None)  # 🧠 Force reloading data
     st.rerun()
 
 # Delete All
@@ -215,7 +217,6 @@ if data_by_date:
     st.markdown("#### 📋 Data Saham")
     st.dataframe(df_show, use_container_width=True)
 
-    # Download button (optional)
     try:
         file_path = hf_hub_download(REPO_ID, filename_by_date[selected_date], repo_type="dataset", token=HF_TOKEN)
         with open(file_path, "rb") as f:
