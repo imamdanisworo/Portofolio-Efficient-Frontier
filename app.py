@@ -86,7 +86,7 @@ filename_by_date = st.session_state["filename_by_date"]
 
 # Upload Section
 st.markdown("### 🔼 Upload Data")
-st.info("📌 Jika nama file sudah ada, data lama akan **digantikan otomatis** dengan file baru.")
+st.info("📌 File yang memiliki nama sama akan otomatis **mengganti** versi lama di database.")
 
 def process_file(file, is_index=False):
     try:
@@ -96,16 +96,18 @@ def process_file(file, is_index=False):
         try:
             delete_file(path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         except:
-            pass  # Ignore if file doesn't exist
+            pass  # Safe to ignore if file not found
 
-        # Upload new version
+        # Reset file pointer and upload
+        file.seek(0)
         upload_file(path_or_fileobj=file, path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 
-        # Read file and update in session
+        # Reset file pointer again and read into DataFrame
+        file.seek(0)
         df = pd.read_excel(file)
         date = get_date_from_filename(file.name)
         if not date:
-            return False, "Tanggal tidak dikenali"
+            return False, "Tanggal tidak dikenali dari nama file"
 
         if is_index:
             if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
@@ -165,7 +167,9 @@ if st.button("🧹 Hapus Semua Data"):
                     delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Semua file berhasil dihapus.")
             st.cache_data.clear()
-            st.session_state.clear()
+            keys_to_clear = ["data_by_date", "index_series", "filename_by_date", "data_loaded"]
+            for k in keys_to_clear:
+                st.session_state.pop(k, None)
             st.rerun()
         except Exception as e:
             st.error(str(e))
@@ -191,7 +195,9 @@ if data_by_date:
             delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Data berhasil dihapus.")
             st.cache_data.clear()
-            st.session_state.clear()
+            keys_to_clear = ["data_by_date", "index_series", "filename_by_date", "data_loaded"]
+            for k in keys_to_clear:
+                st.session_state.pop(k, None)
             st.rerun()
         except Exception as e:
             st.error(f"Gagal menghapus: {e}")
