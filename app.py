@@ -89,9 +89,6 @@ st.markdown("### 🔼 Upload Data")
 
 def process_file(file, is_index=False):
     try:
-        name_in_repo = f"index-{file.name}" if is_index else file.name
-        upload_file(path_or_fileobj=file, path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-
         df = pd.read_excel(file)
         date = get_date_from_filename(file.name)
         if not date:
@@ -100,14 +97,25 @@ def process_file(file, is_index=False):
         if is_index:
             if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
                 filtered = df[df["Kode Indeks"].str.lower() == "composite"]
-                if not filtered.empty:
-                    st.session_state["index_series"][date] = filtered.iloc[0]["Penutupan"]
+                if filtered.empty:
+                    return False, "Data indeks tidak berisi 'composite'"
+            else:
+                return False, "Kolom wajib 'Kode Indeks' dan 'Penutupan' tidak ditemukan"
         else:
-            if "Kode Saham" in df.columns and "Penutupan" in df.columns:
-                filtered = df[["Kode Saham", "Penutupan"]].copy()
-                filtered["Tanggal"] = date
-                st.session_state["data_by_date"][date] = filtered
-                st.session_state["filename_by_date"][date] = name_in_repo
+            if not all(col in df.columns for col in ["Kode Saham", "Penutupan"]):
+                return False, "Kolom wajib 'Kode Saham' dan 'Penutupan' tidak ditemukan"
+
+        name_in_repo = f"index-{file.name}" if is_index else file.name
+        upload_file(path_or_fileobj=file, path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+
+        if is_index:
+            st.session_state["index_series"][date] = filtered.iloc[0]["Penutupan"]
+        else:
+            filtered = df[["Kode Saham", "Penutupan"]].copy()
+            filtered["Tanggal"] = date
+            st.session_state["data_by_date"][date] = filtered
+            st.session_state["filename_by_date"][date] = name_in_repo
+
         return True, f"✅ {file.name} berhasil diunggah"
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
