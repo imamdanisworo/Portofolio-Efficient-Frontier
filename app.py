@@ -6,7 +6,7 @@ from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
 
 # CONFIG
-st.set_page_config(page_title="📈 Portofolio Efficient Frontier", layout="wide")
+st.set_page_config(page_title="📊 Upload & Tinjau Data Saham", layout="wide")
 REPO_ID = "imamdanisworo/dbf-storage"
 HF_TOKEN = st.secrets["HF_TOKEN"]
 
@@ -17,7 +17,7 @@ def get_hf_api():
 api = get_hf_api()
 
 # Header
-st.markdown("<h2 style='text-align:center;'>📈 Portofolio Efficient Frontier</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align:center;'>📊 Upload & Tinjau Data</h2>", unsafe_allow_html=True)
 
 # Helpers
 def get_date_from_filename(name):
@@ -87,7 +87,9 @@ filename_by_date = st.session_state["filename_by_date"]
 
 # Upload Section
 st.markdown("### 🔼 Upload Data")
-st.info("📌 File yang memiliki nama sama akan otomatis **mengganti** versi lama di database.")
+st.info("📌 File harus dalam format `.xlsx`. Nama file menentukan tipe data:\n\n- Gunakan awalan `index-` untuk data indeks\n- File lain akan dianggap sebagai data saham.\n\n📌 File dengan nama sama akan otomatis **mengganti** versi lama di database.")
+
+uploaded_files = st.file_uploader("Upload File Data (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_all")
 
 def validate_excel(file_bytes, is_index):
     try:
@@ -111,19 +113,19 @@ def process_file(file, is_index=False):
         if not valid:
             return False, error_msg
 
-        name_in_repo = f"index-{file.name}" if is_index else file.name
+        name_in_repo = file.name
         date = get_date_from_filename(file.name)
         if not date:
             return False, "❌ Nama file tidak mengandung tanggal valid (format: YYYYMMDD)"
 
-        # Check if file exists (overwrite warning)
+        # Check if file exists
         existing_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         will_overwrite = name_in_repo in existing_files
 
         if will_overwrite:
             st.info(f"⚠️ File dengan nama **{name_in_repo}** sudah ada dan akan diganti.")
 
-        # Delete old version if exists
+        # Delete old version
         try:
             delete_file(path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         except:
@@ -155,14 +157,14 @@ def process_file(file, is_index=False):
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
-# ✅ FIXED: handle_upload using st.experimental_rerun (no session_state overwrite)
-def handle_upload(files, is_index=False, label="File"):
+def handle_all_upload(files):
     if files:
-        st.markdown(f"#### 📥 Status Upload {label}")
+        st.markdown("#### 📥 Status Upload")
         results = []
         rerun_needed = False
 
-        for i, file in enumerate(files):
+        for file in files:
+            is_index = file.name.lower().startswith("index-")
             status_placeholder = st.empty()
             status_placeholder.info(f"⏳ Memproses {file.name}...")
 
@@ -176,15 +178,7 @@ def handle_upload(files, is_index=False, label="File"):
             icon = "✅" if success else "❌"
             st.markdown(f"{icon} **{fname}**: {msg}")
 
-col1, col2 = st.columns(2)
-
-with col1:
-    index_files = st.file_uploader("Upload File Indeks (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_index")
-    handle_upload(index_files, is_index=True, label="Indeks")
-
-with col2:
-    stock_files = st.file_uploader("Upload File Saham (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_saham")
-    handle_upload(stock_files, is_index=False, label="Saham")
+handle_all_upload(uploaded_files)
 
 # Delete All
 st.divider()
