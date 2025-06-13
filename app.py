@@ -155,11 +155,12 @@ def process_file(file, is_index=False):
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
-# ✅ MODIFIED: handle_upload function
+# ✅ FIXED handle_upload function to prevent duplicate UI after rerun
 def handle_upload(files, is_index=False, label="File"):
     if files:
         st.markdown(f"#### 📥 Status Upload {label}")
         results = []
+        rerun_needed = False
 
         for i, file in enumerate(files):
             status_placeholder = st.empty()
@@ -167,14 +168,17 @@ def handle_upload(files, is_index=False, label="File"):
 
             success, message = process_file(file, is_index=is_index)
             results.append((file.name, success, message))
-
             status_placeholder.empty()
+
+            rerun_needed = rerun_needed or success
 
         for fname, success, msg in results:
             icon = "✅" if success else "❌"
             st.markdown(f"{icon} **{fname}**: {msg}")
 
-        if any(r[1] for r in results):
+        if rerun_needed:
+            st.session_state["upload_index"] = None
+            st.session_state["upload_saham"] = None
             st.cache_data.clear()
             st.rerun()
 
