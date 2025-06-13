@@ -104,7 +104,6 @@ def validate_excel(file_bytes, is_index):
 
     return True, df, None
 
-# ✅ MODIFIED: process_file
 def process_file(file, is_index=False):
     try:
         file_bytes = file.read()
@@ -156,16 +155,20 @@ def process_file(file, is_index=False):
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
-# ✅ MODIFIED: handle_upload
+# ✅ MODIFIED: handle_upload function
 def handle_upload(files, is_index=False, label="File"):
     if files:
         st.markdown(f"#### 📥 Status Upload {label}")
         results = []
 
         for i, file in enumerate(files):
-            with st.spinner(f"⏳ Memproses {file.name}..."):
-                success, message = process_file(file, is_index=is_index)
-                results.append((file.name, success, message))
+            status_placeholder = st.empty()
+            status_placeholder.info(f"⏳ Memproses {file.name}...")
+
+            success, message = process_file(file, is_index=is_index)
+            results.append((file.name, success, message))
+
+            status_placeholder.empty()
 
         for fname, success, msg in results:
             icon = "✅" if success else "❌"
