@@ -17,7 +17,7 @@ def get_hf_api():
 api = get_hf_api()
 
 # Header
-st.markdown("<h2 style='text-align:center;'>📈 Ringkasan Saham</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align:center;'>📈 Portofolio Efficient Frontier</h2>", unsafe_allow_html=True)
 
 # Helpers
 def get_date_from_filename(name):
