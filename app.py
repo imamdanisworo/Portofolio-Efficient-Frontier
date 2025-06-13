@@ -135,7 +135,10 @@ with col1:
         total = len(index_files)
         for i, file in enumerate(index_files):
             success, msg = process_file(file, is_index=True)
-            st.success(msg) if success else st.error(msg)
+            if success:
+                st.success(msg)
+            else:
+                st.error(msg)
             progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
             uploaded_any = uploaded_any or success
         progress.empty()
@@ -147,7 +150,10 @@ with col2:
         total = len(stock_files)
         for i, file in enumerate(stock_files):
             success, msg = process_file(file, is_index=False)
-            st.success(msg) if success else st.error(msg)
+            if success:
+                st.success(msg)
+            else:
+                st.error(msg)
             progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
             uploaded_any = uploaded_any or success
         progress.empty()
