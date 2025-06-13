@@ -177,8 +177,9 @@ def handle_upload(files, is_index=False, label="File"):
             st.markdown(f"{icon} **{fname}**: {msg}")
 
         if rerun_needed:
-            st.cache_data.clear()
-            st.rerun()
+            if st.button("🔄 Selesai Upload — Klik untuk refresh"):
+                st.cache_data.clear()
+                st.rerun()
 
 col1, col2 = st.columns(2)
 
