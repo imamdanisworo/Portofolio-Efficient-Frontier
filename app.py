@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import io
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
 
@@ -92,19 +93,27 @@ def process_file(file, is_index=False):
     try:
         name_in_repo = f"index-{file.name}" if is_index else file.name
 
-        # Delete old version if exists
+        # Read file into memory buffer
+        file_bytes = file.read()
+        buffer = io.BytesIO(file_bytes)
+
+        # Delete old file if it exists
         try:
             delete_file(path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         except:
-            pass  # Safe to ignore if file not found
+            pass
 
-        # Reset file pointer and upload
-        file.seek(0)
-        upload_file(path_or_fileobj=file, path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+        # Upload from memory
+        upload_file(
+            path_or_fileobj=io.BytesIO(file_bytes),
+            path_in_repo=name_in_repo,
+            repo_id=REPO_ID,
+            repo_type="dataset",
+            token=HF_TOKEN
+        )
 
-        # Reset file pointer again and read into DataFrame
-        file.seek(0)
-        df = pd.read_excel(file)
+        # Load DataFrame from buffer
+        df = pd.read_excel(io.BytesIO(file_bytes))
         date = get_date_from_filename(file.name)
         if not date:
             return False, "Tanggal tidak dikenali dari nama file"
@@ -135,10 +144,7 @@ with col1:
         total = len(index_files)
         for i, file in enumerate(index_files):
             success, msg = process_file(file, is_index=True)
-            if success:
-                st.success(msg)
-            else:
-                st.error(msg)
+            st.success(msg) if success else st.error(msg)
             progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
             uploaded_any = uploaded_any or success
         progress.empty()
@@ -150,10 +156,7 @@ with col2:
         total = len(stock_files)
         for i, file in enumerate(stock_files):
             success, msg = process_file(file, is_index=False)
-            if success:
-                st.success(msg)
-            else:
-                st.error(msg)
+            st.success(msg) if success else st.error(msg)
             progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
             uploaded_any = uploaded_any or success
         progress.empty()
@@ -173,9 +176,8 @@ if st.button("🧹 Hapus Semua Data"):
                     delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Semua file berhasil dihapus.")
             st.cache_data.clear()
-            keys_to_clear = ["data_by_date", "index_series", "filename_by_date", "data_loaded"]
-            for k in keys_to_clear:
-                st.session_state.pop(k, None)
+            for key in ["data_by_date", "index_series", "filename_by_date", "data_loaded"]:
+                st.session_state.pop(key, None)
             st.rerun()
         except Exception as e:
             st.error(str(e))
@@ -201,9 +203,8 @@ if data_by_date:
             delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Data berhasil dihapus.")
             st.cache_data.clear()
-            keys_to_clear = ["data_by_date", "index_series", "filename_by_date", "data_loaded"]
-            for k in keys_to_clear:
-                st.session_state.pop(k, None)
+            for key in ["data_by_date", "index_series", "filename_by_date", "data_loaded"]:
+                st.session_state.pop(key, None)
             st.rerun()
         except Exception as e:
             st.error(f"Gagal menghapus: {e}")
