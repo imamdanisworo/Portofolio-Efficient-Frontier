@@ -6,6 +6,10 @@ import uuid
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
 
+# ✅ Prevent rerun loop at the top
+if "reset_upload" in st.session_state:
+    del st.session_state["reset_upload"]
+
 # CONFIG
 st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
 REPO_ID = "imamdanisworo/dbf-storage"
@@ -16,10 +20,6 @@ def get_hf_api():
     return HfApi()
 
 api = get_hf_api()
-
-# Clear reset flag after rerun
-if "reset_upload" in st.session_state:
-    del st.session_state["reset_upload"]
 
 # Header
 st.markdown("<h2 style='text-align:center;'>📈 Ringkasan Saham</h2>", unsafe_allow_html=True)
@@ -121,20 +121,17 @@ def process_file(file, is_index=False):
         if not date:
             return False, "❌ Nama file tidak mengandung tanggal valid (format: YYYYMMDD)"
 
-        # Check if file exists (overwrite warning)
         existing_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         will_overwrite = name_in_repo in existing_files
 
         if will_overwrite:
             st.info(f"⚠️ File dengan nama **{name_in_repo}** sudah ada dan akan diganti.")
 
-        # Delete old version if exists
         try:
             delete_file(path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         except:
             pass
 
-        # Upload
         upload_file(
             path_or_fileobj=io.BytesIO(file_bytes),
             path_in_repo=name_in_repo,
@@ -143,7 +140,6 @@ def process_file(file, is_index=False):
             token=HF_TOKEN
         )
 
-        # Save to session
         if is_index:
             filtered = df[df["Kode Indeks"].str.lower() == "composite"]
             if not filtered.empty:
@@ -160,7 +156,7 @@ def process_file(file, is_index=False):
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
-# ✅ FIXED: handle_upload with reset uploader using uuid and rerun flag
+# ✅ Final fixed version
 def handle_upload(files, is_index=False, label="File"):
     if files:
         st.markdown(f"#### 📥 Status Upload {label}")
@@ -198,7 +194,6 @@ with col1:
     handle_upload(index_files, is_index=True, label="Indeks")
 
 with col2:
-    # 👇 Use dynamic key to reset uploader
     upload_saham_key = str(uuid.uuid4()) if "reset_upload" in st.session_state else "upload_saham"
     stock_files = st.file_uploader(
         "Upload File Saham (.xlsx)",
