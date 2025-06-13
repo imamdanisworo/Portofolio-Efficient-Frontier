@@ -49,7 +49,7 @@ def load_all_data():
             continue
         if file.startswith("index-"):
             if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
-                filtered = df[df["Kode Indeks"].str.lower() == "composite"]
+                filtered = df[df["Kode Indeks"].astype(str).str.lower() == "composite"]
                 if not filtered.empty:
                     index_series[date] = filtered.iloc[0]["Penutupan"]
         elif "Kode Saham" in df.columns and "Penutupan" in df.columns:
@@ -91,7 +91,7 @@ with tabs[0]:
 
             if is_index:
                 if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
-                    filtered = df[df["Kode Indeks"].str.lower() == "composite"]
+                    filtered = df[df["Kode Indeks"].astype(str).str.lower() == "composite"]
                     if filtered.empty:
                         return False, "❌ Tidak ada baris 'composite'", None, None
                     return True, "", date, filtered.iloc[0]["Penutupan"]
