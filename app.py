@@ -86,12 +86,22 @@ filename_by_date = st.session_state["filename_by_date"]
 
 # Upload Section
 st.markdown("### 🔼 Upload Data")
+st.info("📌 Jika nama file sudah ada, data lama akan **digantikan otomatis** dengan file baru.")
 
 def process_file(file, is_index=False):
     try:
         name_in_repo = f"index-{file.name}" if is_index else file.name
+
+        # Delete old version if exists
+        try:
+            delete_file(path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+        except:
+            pass  # Ignore if file doesn't exist
+
+        # Upload new version
         upload_file(path_or_fileobj=file, path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
 
+        # Read file and update in session
         df = pd.read_excel(file)
         date = get_date_from_filename(file.name)
         if not date:
@@ -108,7 +118,8 @@ def process_file(file, is_index=False):
                 filtered["Tanggal"] = date
                 st.session_state["data_by_date"][date] = filtered
                 st.session_state["filename_by_date"][date] = name_in_repo
-        return True, f"✅ {file.name} berhasil diunggah"
+
+        return True, f"✅ {file.name} berhasil diunggah dan menggantikan file lama (jika ada)"
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
@@ -170,7 +181,7 @@ if data_by_date:
 
     if selected_date in index_series:
         st.markdown("#### 📊 Indeks Composite")
-        st.dataframe(pd.DataFrame({"Composite": [index_series[selected_date]]}), use_container_width=True)
+        st.metric(label="Indeks Composite", value=f"{index_series[selected_date]:,.0f}")
 
     st.markdown("#### 📋 Data Saham")
     st.dataframe(df_show, use_container_width=True)
