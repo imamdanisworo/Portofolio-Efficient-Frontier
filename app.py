@@ -87,38 +87,70 @@ filename_by_date = st.session_state["filename_by_date"]
 # Upload Section
 st.markdown("### 🔼 Upload Data")
 
-def process_file(file, is_index=False):
+def validate_file(file, is_index=False):
     try:
         df = pd.read_excel(file)
         date = get_date_from_filename(file.name)
         if not date:
-            return False, "Tanggal tidak dikenali"
+            return False, "❌ Tanggal tidak dikenali", None, None
 
         if is_index:
             if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
                 filtered = df[df["Kode Indeks"].str.lower() == "composite"]
                 if filtered.empty:
-                    return False, "Data indeks tidak berisi 'composite'"
+                    return False, "❌ Data indeks tidak berisi 'composite'", None, None
+                return True, "", date, filtered.iloc[0]["Penutupan"]
             else:
-                return False, "Kolom wajib 'Kode Indeks' dan 'Penutupan' tidak ditemukan"
+                return False, "❌ Kolom wajib 'Kode Indeks' dan 'Penutupan' tidak ditemukan", None, None
         else:
             if not all(col in df.columns for col in ["Kode Saham", "Penutupan"]):
-                return False, "Kolom wajib 'Kode Saham' dan 'Penutupan' tidak ditemukan"
+                return False, "❌ Kolom wajib 'Kode Saham' dan 'Penutupan' tidak ditemukan", None, None
+            df_filtered = df[["Kode Saham", "Penutupan"]].copy()
+            df_filtered["Tanggal"] = date
+            return True, "", date, df_filtered
 
-        name_in_repo = f"index-{file.name}" if is_index else file.name
-        upload_file(path_or_fileobj=file, path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-
-        if is_index:
-            st.session_state["index_series"][date] = filtered.iloc[0]["Penutupan"]
-        else:
-            filtered = df[["Kode Saham", "Penutupan"]].copy()
-            filtered["Tanggal"] = date
-            st.session_state["data_by_date"][date] = filtered
-            st.session_state["filename_by_date"][date] = name_in_repo
-
-        return True, f"✅ {file.name} berhasil diunggah"
     except Exception as e:
-        return False, f"❌ Gagal unggah {file.name}: {e}"
+        return False, f"❌ Gagal membaca file: {e}", None, None
+
+def process_files(files, is_index=False):
+    messages = []
+    new_index_data = {}
+    new_stock_data = {}
+    new_filenames = {}
+
+    progress = st.progress(0, "📤 Memproses file...")
+    total = len(files)
+
+    for i, file in enumerate(files):
+        valid, msg, date, result = validate_file(file, is_index)
+        if not valid:
+            messages.append(f"{file.name}: {msg}")
+        else:
+            try:
+                name_in_repo = f"index-{file.name}" if is_index else file.name
+                upload_file(path_or_fileobj=file, path_in_repo=name_in_repo,
+                            repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
+
+                if is_index:
+                    new_index_data[date] = result
+                else:
+                    new_stock_data[date] = result
+                    new_filenames[date] = name_in_repo
+
+                messages.append(f"✅ {file.name} berhasil diunggah")
+            except Exception as e:
+                messages.append(f"{file.name}: ❌ Gagal unggah ke HF: {e}")
+        progress.progress((i + 1) / total)
+
+    progress.empty()
+
+    if is_index:
+        st.session_state["index_series"].update(new_index_data)
+    else:
+        st.session_state["data_by_date"].update(new_stock_data)
+        st.session_state["filename_by_date"].update(new_filenames)
+
+    return messages, bool(new_index_data or new_stock_data)
 
 col1, col2 = st.columns(2)
 uploaded_any = False
@@ -126,26 +158,18 @@ uploaded_any = False
 with col1:
     index_files = st.file_uploader("Upload File Indeks (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_index")
     if index_files:
-        progress = st.progress(0, "📤 Mengunggah file indeks...")
-        total = len(index_files)
-        for i, file in enumerate(index_files):
-            success, msg = process_file(file, is_index=True)
-            st.success(msg) if success else st.error(msg)
-            progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
-            uploaded_any = uploaded_any or success
-        progress.empty()
+        msgs, changed = process_files(index_files, is_index=True)
+        for m in msgs:
+            st.toast(m)
+        uploaded_any = uploaded_any or changed
 
 with col2:
     stock_files = st.file_uploader("Upload File Saham (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_saham")
     if stock_files:
-        progress = st.progress(0, "📤 Mengunggah file saham...")
-        total = len(stock_files)
-        for i, file in enumerate(stock_files):
-            success, msg = process_file(file, is_index=False)
-            st.success(msg) if success else st.error(msg)
-            progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
-            uploaded_any = uploaded_any or success
-        progress.empty()
+        msgs, changed = process_files(stock_files, is_index=False)
+        for m in msgs:
+            st.toast(m)
+        uploaded_any = uploaded_any or changed
 
 if uploaded_any:
     st.cache_data.clear()
