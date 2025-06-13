@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 import io
-import uuid
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
 
@@ -16,10 +15,6 @@ def get_hf_api():
     return HfApi()
 
 api = get_hf_api()
-
-# Clear reset flag after rerun
-if "reset_upload" in st.session_state:
-    del st.session_state["reset_upload"]
 
 # Header
 st.markdown("<h2 style='text-align:center;'>📈 Ringkasan Saham</h2>", unsafe_allow_html=True)
@@ -160,7 +155,7 @@ def process_file(file, is_index=False):
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
-# ✅ FIXED: handle_upload with reset uploader using uuid and rerun flag
+# ✅ FIXED: handle_upload using st.experimental_rerun (no session_state overwrite)
 def handle_upload(files, is_index=False, label="File"):
     if files:
         st.markdown(f"#### 📥 Status Upload {label}")
@@ -182,30 +177,18 @@ def handle_upload(files, is_index=False, label="File"):
             st.markdown(f"{icon} **{fname}**: {msg}")
 
         if rerun_needed:
-            st.session_state["reset_upload"] = True
-            st.cache_data.clear()
-            st.rerun()
+            if st.button("🔄 Selesai Upload — Klik untuk refresh"):
+                st.cache_data.clear()
+                st.rerun()
 
 col1, col2 = st.columns(2)
 
 with col1:
-    index_files = st.file_uploader(
-        "Upload File Indeks (.xlsx)",
-        type="xlsx",
-        accept_multiple_files=True,
-        key="upload_index"
-    )
+    index_files = st.file_uploader("Upload File Indeks (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_index")
     handle_upload(index_files, is_index=True, label="Indeks")
 
 with col2:
-    # 👇 Use dynamic key to reset uploader
-    upload_saham_key = str(uuid.uuid4()) if "reset_upload" in st.session_state else "upload_saham"
-    stock_files = st.file_uploader(
-        "Upload File Saham (.xlsx)",
-        type="xlsx",
-        accept_multiple_files=True,
-        key=upload_saham_key
-    )
+    stock_files = st.file_uploader("Upload File Saham (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_saham")
     handle_upload(stock_files, is_index=False, label="Saham")
 
 # Delete All
