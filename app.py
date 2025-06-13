@@ -1,186 +1,212 @@
 import streamlit as st
 import pandas as pd
-import os
+import re
 from datetime import datetime
-from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
+import plotly.express as px
+from huggingface_hub import HfApi, hf_hub_download, upload_file
 
-# CONFIG
-st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
-REPO_ID = "imamdanisworo/dbf-storage"
+st.set_page_config(page_title="Ringkasan Broker", layout="wide")
+st.title("📊 Ringkasan Aktivitas Broker Saham")
+
+# === CONFIG ===
+REPO_ID = "imamdanisworo/broker-storage"
 HF_TOKEN = st.secrets["HF_TOKEN"]
 
-@st.cache_resource
-def get_hf_api():
-    return HfApi()
+# === Refresh Button ===
+st.button("🔁 Refresh Data", on_click=lambda: (st.cache_data.clear(), st.rerun()))
 
-api = get_hf_api()
+# === File Upload Section ===
+st.subheader("📤 Upload Data")
+st.markdown("Unggah file Excel broker harian (*.xlsx) ke penyimpanan agar dapat dianalisis.")
 
-# Header
-st.markdown("<h2 style='text-align:center;'>📈 Ringkasan Saham</h2>", unsafe_allow_html=True)
+uploaded_files = st.file_uploader("Pilih file Excel", type=["xlsx"], accept_multiple_files=True)
+if uploaded_files:
+    for file in uploaded_files:
+        try:
+            df = pd.read_excel(file, sheet_name="Sheet1")
+            df.columns = df.columns.str.strip()
 
-# Helpers
-def get_date_from_filename(name):
-    try:
-        date_part = os.path.splitext(name)[0].split("-")[-1]
-        return datetime.strptime(date_part, "%Y%m%d").date()
-    except:
-        return None
+            if {"Kode Perusahaan", "Nama Perusahaan", "Volume", "Nilai", "Frekuensi"}.issubset(df.columns):
+                upload_file(
+                    path_or_fileobj=file,
+                    path_in_repo=file.name,
+                    repo_id=REPO_ID,
+                    repo_type="dataset",
+                    token=HF_TOKEN
+                )
+                st.success(f"✅ Berhasil diunggah: {file.name}")
+            else:
+                st.warning(f"⚠️ {file.name} tidak diunggah: kolom tidak lengkap.")
+        except Exception as e:
+            st.error(f"❌ Gagal memproses {file.name}: {e}")
 
-@st.cache_data(show_spinner=False)
-def load_excel_from_hf(filename):
-    try:
-        path = hf_hub_download(
-            repo_id=REPO_ID,
-            filename=filename,
-            repo_type="dataset",
-            token=HF_TOKEN,
-            cache_dir="/tmp/huggingface"
-        )
-        return pd.read_excel(path)
-    except Exception as e:
-        st.warning(f"⚠️ Gagal memuat {filename}: {e}")
-        return None
-
-@st.cache_data(show_spinner=True)
-def load_all_data():
-    files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-    xlsx_files = [f for f in files if f.lower().endswith(".xlsx")]
-
-    stock_by_date = {}
-    index_series = {}
-    filename_by_date = {}
-
+# === Load Excel Files from HF ===
+@st.cache_data
+def load_excel_files():
+    api = HfApi()
+    files = api.list_repo_files(REPO_ID, repo_type="dataset")
+    xlsx_files = [f for f in files if f.endswith(".xlsx")]
+    data = []
     for file in xlsx_files:
-        df = load_excel_from_hf(file)
-        if df is None:
-            continue
-        date = get_date_from_filename(file)
-        if not date:
-            continue
-        if file.startswith("index-"):
-            if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
-                filtered = df[df["Kode Indeks"].str.lower() == "composite"]
-                if not filtered.empty:
-                    index_series[date] = filtered.iloc[0]["Penutupan"]
-        elif "Kode Saham" in df.columns and "Penutupan" in df.columns:
-            filtered = df[["Kode Saham", "Penutupan"]].copy()
-            filtered["Tanggal"] = date
-            stock_by_date[date] = filtered
-            filename_by_date[date] = file
-
-    return stock_by_date, pd.Series(index_series).sort_index(), filename_by_date
-
-# Load on first run
-if "data_loaded" not in st.session_state:
-    data_by_date, index_series, filename_by_date = load_all_data()
-    st.session_state.update({
-        "data_by_date": data_by_date,
-        "index_series": index_series,
-        "filename_by_date": filename_by_date,
-        "data_loaded": True
-    })
-
-data_by_date = st.session_state["data_by_date"]
-index_series = st.session_state["index_series"]
-filename_by_date = st.session_state["filename_by_date"]
-
-# Upload Section
-st.markdown("### 🔼 Upload Data")
-
-def process_file(file, is_index=False):
-    try:
-        name_in_repo = f"index-{file.name}" if is_index else file.name
-        upload_file(path_or_fileobj=file, path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-
-        df = pd.read_excel(file)
-        date = get_date_from_filename(file.name)
-        if not date:
-            return False, "Tanggal tidak dikenali"
-
-        if is_index:
-            if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
-                filtered = df[df["Kode Indeks"].str.lower() == "composite"]
-                if not filtered.empty:
-                    st.session_state["index_series"][date] = filtered.iloc[0]["Penutupan"]
-        else:
-            if "Kode Saham" in df.columns and "Penutupan" in df.columns:
-                filtered = df[["Kode Saham", "Penutupan"]].copy()
-                filtered["Tanggal"] = date
-                st.session_state["data_by_date"][date] = filtered
-                st.session_state["filename_by_date"][date] = name_in_repo
-        return True, f"✅ {file.name} berhasil diunggah"
-    except Exception as e:
-        return False, f"❌ Gagal unggah {file.name}: {e}"
-
-col1, col2 = st.columns(2)
-uploaded_any = False
-
-with col1:
-    index_files = st.file_uploader("Upload File Indeks (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_index")
-    if index_files:
-        progress = st.progress(0, "📤 Mengunggah file indeks...")
-        total = len(index_files)
-        for i, file in enumerate(index_files):
-            success, msg = process_file(file, is_index=True)
-            st.success(msg) if success else st.error(msg)
-            progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
-            uploaded_any = uploaded_any or success
-        progress.empty()
-
-with col2:
-    stock_files = st.file_uploader("Upload File Saham (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_saham")
-    if stock_files:
-        progress = st.progress(0, "📤 Mengunggah file saham...")
-        total = len(stock_files)
-        for i, file in enumerate(stock_files):
-            success, msg = process_file(file, is_index=False)
-            st.success(msg) if success else st.error(msg)
-            progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
-            uploaded_any = uploaded_any or success
-        progress.empty()
-
-if uploaded_any:
-    st.cache_data.clear()
-    st.rerun()
-
-# Delete All
-st.divider()
-if st.button("🧹 Hapus Semua Data"):
-    with st.spinner("🚮 Menghapus semua file dari Hugging Face..."):
         try:
-            all_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
-            for file in all_files:
-                if file.lower().endswith(".xlsx"):
-                    delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
-            st.success("✅ Semua file berhasil dihapus.")
-            st.cache_data.clear()
-            st.session_state.clear()
-            st.rerun()
+            file_path = hf_hub_download(REPO_ID, filename=file, repo_type="dataset", token=HF_TOKEN)
+            match = re.search(r"(\d{8})", file)
+            file_date = datetime.strptime(match.group(1), "%Y%m%d").date() if match else datetime.today().date()
+            df = pd.read_excel(file_path, sheet_name="Sheet1")
+            df.columns = df.columns.str.strip()
+
+            if {"Kode Perusahaan", "Nama Perusahaan", "Volume", "Nilai", "Frekuensi"}.issubset(df.columns):
+                df["Tanggal"] = file_date
+                df["Broker"] = df["Kode Perusahaan"] + " / " + df["Nama Perusahaan"]
+                data.append(df)
+            else:
+                st.warning(f"⚠️ {file} dilewati: kolom tidak lengkap.")
         except Exception as e:
-            st.error(str(e))
+            st.warning(f"⚠️ Gagal memuat {file}: {e}")
+    return pd.concat(data, ignore_index=True) if data else pd.DataFrame()
 
-# Viewer
-st.divider()
-st.markdown(f"**📄 Jumlah File Saham:** {len(data_by_date)}  &nbsp;&nbsp;|&nbsp;&nbsp; 📄 **Jumlah File Indeks:** {len(index_series)}")
+combined_df = load_excel_files()
 
-if data_by_date:
-    selected_date = st.selectbox("📆 Pilih Tanggal Data", sorted(data_by_date.keys(), reverse=True))
-    df_show = data_by_date[selected_date].copy()
-    df_show["Penutupan"] = df_show["Penutupan"].apply(lambda x: f"{x:,.0f}")
+if not combined_df.empty:
+    combined_df["Tanggal"] = pd.to_datetime(combined_df["Tanggal"])
 
-    if selected_date in index_series:
-        st.markdown("#### 📊 Indeks Composite")
-        st.dataframe(pd.DataFrame({"Composite": [index_series[selected_date]]}), use_container_width=True)
+    with st.expander("⚙️ Filter Data", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_brokers = st.multiselect("📌 Pilih Broker", sorted(combined_df["Broker"].unique()))
+        with col2:
+            selected_fields = st.multiselect("📊 Pilih Jenis Data", ["Volume", "Nilai", "Frekuensi"])
 
-    st.markdown("#### 📋 Data Saham")
-    st.dataframe(df_show, use_container_width=True)
+        display_mode = st.radio("🗓️ Mode Tampilan", ["Daily", "Monthly", "Yearly"], horizontal=True)
 
-    if st.button("🗑️ Hapus Data Ini"):
-        try:
-            delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
-            st.success("✅ Data berhasil dihapus.")
-            st.cache_data.clear()
-            st.session_state.clear()
-            st.rerun()
-        except Exception as e:
-            st.error(f"Gagal menghapus: {e}")
+        min_date, max_date = combined_df["Tanggal"].min().date(), combined_df["Tanggal"].max().date()
+        today = datetime.today()
+        year_start = datetime(today.year, 1, 1).date()
+
+        if display_mode == "Daily":
+            col1, col2 = st.columns(2)
+            with col1:
+                date_from = st.date_input("Dari Tanggal", min_value=min_date, max_value=max_date, value=year_start)
+            with col2:
+                date_to = st.date_input("Sampai Tanggal", min_value=min_date, max_value=max_date, value=max_date)
+        elif display_mode == "Monthly":
+            all_months = combined_df["Tanggal"].dt.to_period("M")
+            unique_years = sorted(set(m.year for m in all_months.unique()))
+            selected_years = st.multiselect("Pilih Tahun", unique_years, default=[today.year])
+            months = sorted([m for m in all_months.unique() if m.year in selected_years])
+            selected_months = st.multiselect("Pilih Bulan", months, default=months)
+            if selected_months:
+                date_from = min(m.to_timestamp() for m in selected_months)
+                date_to = max((m + 1).to_timestamp() - pd.Timedelta(days=1) for m in selected_months)
+            else:
+                date_from = date_to = None
+        elif display_mode == "Yearly":
+            years = sorted(combined_df["Tanggal"].dt.year.unique())
+            selected_years = st.multiselect("Pilih Tahun", years, default=[today.year])
+            if selected_years:
+                date_from = datetime(min(selected_years), 1, 1).date()
+                date_to = datetime(max(selected_years), 12, 31).date()
+            else:
+                date_from = date_to = None
+
+    if not selected_brokers:
+        st.warning("❗ Silakan pilih minimal satu broker.")
+    elif not selected_fields:
+        st.warning("❗ Silakan pilih minimal satu jenis data.")
+    elif not date_from or not date_to:
+        st.warning("❗ Rentang tanggal tidak valid.")
+    else:
+        st.markdown("### 📊 Hasil Ringkasan")
+
+        filtered_df = combined_df[
+            (combined_df["Tanggal"] >= pd.to_datetime(date_from)) &
+            (combined_df["Tanggal"] <= pd.to_datetime(date_to)) &
+            (combined_df["Broker"].isin(selected_brokers))
+        ]
+
+        if not filtered_df.empty:
+            melted_df = filtered_df.melt(id_vars=["Tanggal", "Broker"], value_vars=selected_fields,
+                                         var_name="Field", value_name="Value")
+            total_df = combined_df.melt(id_vars=["Tanggal", "Broker"], value_vars=selected_fields,
+                                        var_name="Field", value_name="Value")
+            total_df = total_df.groupby(["Tanggal", "Field"])["Value"].sum().reset_index()
+            total_df.rename(columns={"Value": "TotalValue"}, inplace=True)
+
+            merged_df = pd.merge(melted_df, total_df, on=["Tanggal", "Field"])
+            merged_df["Percentage"] = merged_df.apply(
+                lambda row: (row["Value"] / row["TotalValue"] * 100) if row["TotalValue"] != 0 else 0, axis=1)
+
+            display_df = merged_df.copy()
+
+            if display_mode == "Monthly":
+                display_df["Tanggal"] = display_df["Tanggal"].dt.to_period("M").dt.to_timestamp()
+                display_df = display_df.groupby(["Tanggal", "Broker", "Field"]).agg({"Value": "sum", "Percentage": "mean"}).reset_index()
+                display_df = display_df[
+                    (display_df["Tanggal"] >= pd.to_datetime(date_from)) &
+                    (display_df["Tanggal"] <= pd.to_datetime(date_to))
+                ]
+            elif display_mode == "Yearly":
+                display_df["Tanggal"] = display_df["Tanggal"].dt.to_period("Y").dt.to_timestamp()
+                display_df = display_df.groupby(["Tanggal", "Broker", "Field"]).agg({"Value": "sum", "Percentage": "mean"}).reset_index()
+                display_df = display_df[
+                    (display_df["Tanggal"] >= pd.to_datetime(date_from)) &
+                    (display_df["Tanggal"] <= pd.to_datetime(date_to))
+                ]
+
+            display_df["Formatted Value"] = display_df["Value"].apply(lambda x: f"{x:,.0f}")
+            display_df["Formatted %"] = display_df["Percentage"].apply(lambda x: f"{x:.2f}%")
+
+            display_df_for_table = display_df[["Tanggal", "Broker", "Field", "Formatted Value", "Formatted %"]].copy()
+            display_df_for_table["Tanggal Display"] = display_df["Tanggal"].dt.strftime(
+                '%-d %b %Y' if display_mode == "Daily" else '%b %Y' if display_mode == "Monthly" else '%Y'
+            )
+            display_df_for_table = display_df_for_table.sort_values("Tanggal")
+
+            st.dataframe(
+                display_df_for_table[["Tanggal Display", "Broker", "Field", "Formatted Value", "Formatted %"]]
+                .rename(columns={"Tanggal Display": "Tanggal"})
+            )
+
+            to_download = display_df_for_table[["Tanggal", "Broker", "Field", "Formatted Value", "Formatted %"]].copy()
+            to_download.columns = ["Tanggal", "Broker", "Field", "Value", "%"]
+            csv = to_download.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Unduh Tabel CSV", data=csv, file_name="broker_summary.csv", mime="text/csv")
+
+            tab1, tab2 = st.tabs(["📈 Nilai Asli", "📊 Kontribusi (%)"])
+
+            with tab1:
+                for field in selected_fields:
+                    chart_data = display_df[display_df["Field"] == field].copy()
+                    fig = px.line(
+                        chart_data,
+                        x="Tanggal",
+                        y="Value",
+                        color="Broker",
+                        title=f"{field} dari waktu ke waktu",
+                        markers=True
+                    )
+                    fig.update_layout(
+                        yaxis_tickformat=".2s",
+                        xaxis_title="Tanggal",
+                        hovermode="x unified"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+            with tab2:
+                for field in selected_fields:
+                    chart_data = display_df[display_df["Field"] == field].copy()
+                    fig = px.line(
+                        chart_data,
+                        x="Tanggal",
+                        y="Percentage",
+                        color="Broker",
+                        title=f"Kontribusi {field} (%) dari waktu ke waktu",
+                        markers=True
+                    )
+                    fig.update_layout(
+                        xaxis_title="Tanggal",
+                        hovermode="x unified"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("⬆️ Silakan unggah file Excel terlebih dahulu.")
