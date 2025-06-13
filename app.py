@@ -2,13 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 import io
-import uuid
 from datetime import datetime
 from huggingface_hub import HfApi, hf_hub_download, upload_file, delete_file
-
-# ✅ Prevent rerun loop at the top
-if "reset_upload" in st.session_state:
-    del st.session_state["reset_upload"]
 
 # CONFIG
 st.set_page_config(page_title="📈 Ringkasan Saham", layout="wide")
@@ -121,17 +116,20 @@ def process_file(file, is_index=False):
         if not date:
             return False, "❌ Nama file tidak mengandung tanggal valid (format: YYYYMMDD)"
 
+        # Check if file exists (overwrite warning)
         existing_files = api.list_repo_files(repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         will_overwrite = name_in_repo in existing_files
 
         if will_overwrite:
             st.info(f"⚠️ File dengan nama **{name_in_repo}** sudah ada dan akan diganti.")
 
+        # Delete old version if exists
         try:
             delete_file(path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         except:
             pass
 
+        # Upload
         upload_file(
             path_or_fileobj=io.BytesIO(file_bytes),
             path_in_repo=name_in_repo,
@@ -140,6 +138,7 @@ def process_file(file, is_index=False):
             token=HF_TOKEN
         )
 
+        # Save to session
         if is_index:
             filtered = df[df["Kode Indeks"].str.lower() == "composite"]
             if not filtered.empty:
@@ -156,7 +155,7 @@ def process_file(file, is_index=False):
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
-# ✅ Final fixed version
+# ✅ FIXED: handle_upload using st.experimental_rerun (no session_state overwrite)
 def handle_upload(files, is_index=False, label="File"):
     if files:
         st.markdown(f"#### 📥 Status Upload {label}")
@@ -178,29 +177,18 @@ def handle_upload(files, is_index=False, label="File"):
             st.markdown(f"{icon} **{fname}**: {msg}")
 
         if rerun_needed:
-            st.session_state["reset_upload"] = True
-            st.cache_data.clear()
-            st.rerun()
+            if st.button("🔄 Selesai Upload — Klik untuk refresh"):
+                st.cache_data.clear()
+                st.rerun()
 
 col1, col2 = st.columns(2)
 
 with col1:
-    index_files = st.file_uploader(
-        "Upload File Indeks (.xlsx)",
-        type="xlsx",
-        accept_multiple_files=True,
-        key="upload_index"
-    )
+    index_files = st.file_uploader("Upload File Indeks (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_index")
     handle_upload(index_files, is_index=True, label="Indeks")
 
 with col2:
-    upload_saham_key = str(uuid.uuid4()) if "reset_upload" in st.session_state else "upload_saham"
-    stock_files = st.file_uploader(
-        "Upload File Saham (.xlsx)",
-        type="xlsx",
-        accept_multiple_files=True,
-        key=upload_saham_key
-    )
+    stock_files = st.file_uploader("Upload File Saham (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_saham")
     handle_upload(stock_files, is_index=False, label="Saham")
 
 # Delete All
