@@ -89,21 +89,37 @@ filename_by_date = st.session_state["filename_by_date"]
 st.markdown("### 🔼 Upload Data")
 st.info("📌 File yang memiliki nama sama akan otomatis **mengganti** versi lama di database.")
 
+def validate_excel(file_bytes, is_index):
+    try:
+        df = pd.read_excel(io.BytesIO(file_bytes))
+    except Exception as e:
+        return False, None, f"Gagal membaca file Excel: {e}"
+
+    if is_index:
+        if not all(col in df.columns for col in ["Kode Indeks", "Penutupan"]):
+            return False, None, "❌ Kolom wajib 'Kode Indeks' dan 'Penutupan' tidak ditemukan"
+    else:
+        if not all(col in df.columns for col in ["Kode Saham", "Penutupan"]):
+            return False, None, "❌ Kolom wajib 'Kode Saham' dan 'Penutupan' tidak ditemukan"
+
+    return True, df, None
+
 def process_file(file, is_index=False):
     try:
+        file_bytes = file.read()
+        valid, df, error_msg = validate_excel(file_bytes, is_index)
+        if not valid:
+            return False, error_msg
+
         name_in_repo = f"index-{file.name}" if is_index else file.name
 
-        # Read file into memory buffer
-        file_bytes = file.read()
-        buffer = io.BytesIO(file_bytes)
-
-        # Delete old file if it exists
+        # Delete old version
         try:
             delete_file(path_in_repo=name_in_repo, repo_id=REPO_ID, repo_type="dataset", token=HF_TOKEN)
         except:
             pass
 
-        # Upload from memory
+        # Upload new version
         upload_file(
             path_or_fileobj=io.BytesIO(file_bytes),
             path_in_repo=name_in_repo,
@@ -112,58 +128,52 @@ def process_file(file, is_index=False):
             token=HF_TOKEN
         )
 
-        # Load DataFrame from buffer
-        df = pd.read_excel(io.BytesIO(file_bytes))
         date = get_date_from_filename(file.name)
         if not date:
-            return False, "Tanggal tidak dikenali dari nama file"
+            return False, "❌ Nama file tidak mengandung tanggal valid (format: YYYYMMDD)"
 
         if is_index:
-            if "Kode Indeks" in df.columns and "Penutupan" in df.columns:
-                filtered = df[df["Kode Indeks"].str.lower() == "composite"]
-                if not filtered.empty:
-                    st.session_state["index_series"][date] = filtered.iloc[0]["Penutupan"]
+            filtered = df[df["Kode Indeks"].str.lower() == "composite"]
+            if not filtered.empty:
+                st.session_state["index_series"][date] = filtered.iloc[0]["Penutupan"]
         else:
-            if "Kode Saham" in df.columns and "Penutupan" in df.columns:
-                filtered = df[["Kode Saham", "Penutupan"]].copy()
-                filtered["Tanggal"] = date
-                st.session_state["data_by_date"][date] = filtered
-                st.session_state["filename_by_date"][date] = name_in_repo
+            filtered = df[["Kode Saham", "Penutupan"]].copy()
+            filtered["Tanggal"] = date
+            st.session_state["data_by_date"][date] = filtered
+            st.session_state["filename_by_date"][date] = name_in_repo
 
-        return True, f"✅ {file.name} berhasil diunggah dan menggantikan file lama (jika ada)"
+        return True, f"✅ {file.name} berhasil diunggah"
     except Exception as e:
         return False, f"❌ Gagal unggah {file.name}: {e}"
 
+def handle_upload(files, is_index=False, label="File"):
+    if files:
+        st.markdown(f"#### 📥 Status Upload {label}")
+        results = []
+
+        for i, file in enumerate(files):
+            with st.spinner(f"⏳ Memproses {file.name}..."):
+                success, message = process_file(file, is_index=is_index)
+                results.append((file.name, success, message))
+
+        # Show result table
+        for fname, success, msg in results:
+            icon = "✅" if success else "❌"
+            st.markdown(f"{icon} **{fname}**: {msg}")
+
+        if any(r[1] for r in results):
+            st.cache_data.clear()
+            st.rerun()
+
 col1, col2 = st.columns(2)
-uploaded_any = False
 
 with col1:
     index_files = st.file_uploader("Upload File Indeks (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_index")
-    if index_files:
-        progress = st.progress(0, "📤 Mengunggah file indeks...")
-        total = len(index_files)
-        for i, file in enumerate(index_files):
-            success, msg = process_file(file, is_index=True)
-            st.success(msg) if success else st.error(msg)
-            progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
-            uploaded_any = uploaded_any or success
-        progress.empty()
+    handle_upload(index_files, is_index=True, label="Indeks")
 
 with col2:
     stock_files = st.file_uploader("Upload File Saham (.xlsx)", type="xlsx", accept_multiple_files=True, key="upload_saham")
-    if stock_files:
-        progress = st.progress(0, "📤 Mengunggah file saham...")
-        total = len(stock_files)
-        for i, file in enumerate(stock_files):
-            success, msg = process_file(file, is_index=False)
-            st.success(msg) if success else st.error(msg)
-            progress.progress((i + 1) / total, text=f"📤 Mengunggah {file.name} ({i+1}/{total})")
-            uploaded_any = uploaded_any or success
-        progress.empty()
-
-if uploaded_any:
-    st.cache_data.clear()
-    st.rerun()
+    handle_upload(stock_files, is_index=False, label="Saham")
 
 # Delete All
 st.divider()
@@ -176,8 +186,8 @@ if st.button("🧹 Hapus Semua Data"):
                     delete_file(file, REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Semua file berhasil dihapus.")
             st.cache_data.clear()
-            for key in ["data_by_date", "index_series", "filename_by_date", "data_loaded"]:
-                st.session_state.pop(key, None)
+            for k in ["data_by_date", "index_series", "filename_by_date", "data_loaded"]:
+                st.session_state.pop(k, None)
             st.rerun()
         except Exception as e:
             st.error(str(e))
@@ -203,8 +213,8 @@ if data_by_date:
             delete_file(filename_by_date[selected_date], REPO_ID, repo_type="dataset", token=HF_TOKEN)
             st.success("✅ Data berhasil dihapus.")
             st.cache_data.clear()
-            for key in ["data_by_date", "index_series", "filename_by_date", "data_loaded"]:
-                st.session_state.pop(key, None)
+            for k in ["data_by_date", "index_series", "filename_by_date", "data_loaded"]:
+                st.session_state.pop(k, None)
             st.rerun()
         except Exception as e:
             st.error(f"Gagal menghapus: {e}")
